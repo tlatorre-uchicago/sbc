@@ -535,7 +535,7 @@ int main(void)
 				buf[0], buf[1], buf[2], buf[3],
 				buf[4], buf[5], buf[6], buf[7]);
 		} else {
-			//printf("64: OK: %lld == %lld\n", k, k2);
+			printf("64: OK: %lld == %lld\n", k, k2);
 		}
 
 		K = testu64[x];
@@ -545,7 +545,7 @@ int main(void)
 		if (K2 != K) {
 			printf("64: %llu != %llu\n", K, K2);
 		} else {
-			//printf("64: OK: %llu == %llu\n", K, K2);
+			printf("64: OK: %llu == %llu\n", K, K2);
 		}
 
 		i = test32[x];
@@ -561,7 +561,7 @@ int main(void)
 				buf[0], buf[1], buf[2], buf[3],
 				buf[4], buf[5], buf[6], buf[7]);
 		} else {
-			//printf("32: OK: %ld == %ld\n", i, i2);
+			printf("32: OK: %ld == %ld\n", i, i2);
 		}
 
 		I = testu32[x];
@@ -571,7 +571,7 @@ int main(void)
 		if (I2 != I) {
 			printf("32(%d): %lu != %lu\n", x,I, I2);
 		} else {
-			//printf("32: OK: %lu == %lu\n", I, I2);
+			printf("32: OK: %lu == %lu\n", I, I2);
 		}
 
 		j = test16[x];
@@ -581,7 +581,7 @@ int main(void)
 		if (j2 != j) {
 			printf("16: %d != %d\n", j, j2);
 		} else {
-			//printf("16: OK: %d == %d\n", j, j2);
+			printf("16: OK: %d == %d\n", j, j2);
 		}
 	}
 
@@ -603,7 +603,7 @@ int main(void)
 					buf[0], buf[1], buf[2], buf[3],
 					buf[4], buf[5], buf[6], buf[7]);
 			} else {
-				//printf("f64: OK: %f == %f\n", f, f2);
+				printf("f64: OK: %f == %f\n", f, f2);
 			}
 		}
 	}
@@ -625,7 +625,7 @@ int main(void)
 					buf[0], buf[1], buf[2], buf[3],
 					buf[4], buf[5], buf[6], buf[7]);
 			} else {
-				//printf("f32: OK: %f == %f\n", f, f2);
+				printf("f32: OK: %f == %f\n", f, f2);
 			}
 		}
 	}
@@ -647,7 +647,7 @@ int main(void)
 					buf[0], buf[1], buf[2], buf[3],
 					buf[4], buf[5], buf[6], buf[7]);
 			} else {
-				//printf("f16: OK: %f == %f\n", f, f2);
+				printf("f16: OK: %f == %f\n", f, f2);
 			}
 		}
 	}

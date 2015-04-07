@@ -1,4 +1,4 @@
-all: server
+all: server pack
 
 
 utils.o: utils.c
@@ -6,3 +6,9 @@ utils.o: utils.c
 
 server: utils.o server.c
 	cc server.c utils.o -o server
+
+pack.o: pack.c
+	cc -c pack.c
+
+pack: pack.o
+	cc pack.o -DDEBUG -o pack
