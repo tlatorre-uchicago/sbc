@@ -271,7 +271,7 @@ int main(void)
                 /* move data back to beginning of buffer */
                 FLUSH(bufs[i]);
 
-                if (strlen(pbuf) > BYTES(bufs[i])) {
+                if (strlen(pbuf) > (bufs[i].size - BYTES(bufs[i]))) {
                     /* not enough space left */
                     int sin_size = sizeof their_addr;
 
@@ -281,11 +281,12 @@ int main(void)
                         perror("getpeername");
                         s[0] = '?';
                         s[1] = '\0';
+                    } else {
+                        /* get ip address */
+                        inet_ntop(their_addr.ss_family,
+                            get_in_addr((struct sockaddr *)&their_addr),
+                            s, sizeof s);
                     }
-
-                    inet_ntop(their_addr.ss_family,
-                        get_in_addr((struct sockaddr *)&their_addr),
-                        s, sizeof s);
                     fprintf(stderr, "ERROR: output buffer full for %s\n",s);
                 } else {
                     memcpy(bufs[i].tail,pbuf,strlen(pbuf));
