@@ -62,6 +62,35 @@ void escape_string(char *dest, char *src)
     *dest = '\0';
 }
 
+/* a struct for buffering outgoing data */
+struct buffer
+{
+    char *buf;
+    char *head;
+    char *tail;
+    unsigned int size;
+};
+
+#define BYTES(x) (x.tail - x.head)
+
+void malloc_buffer(struct buffer *b, unsigned int size)
+{
+    /* malloc a buffer with `size` elements */
+    b->buf = malloc(size);
+    b->head = b->tail = b->buf;
+    b->size = size;
+}
+
+void free_buffer(struct buffer *b)
+{
+    free(b->buf);
+    b->head = b->tail = NULL;
+    b->size = -1;
+}
+
+#define LEN(buf) (buf->tail - buf->head)
+#define BYTES_LEFT(buf) (buf->size - (buf->tail - buf->head))
+
 int main(void)
 {
     int sockfd;
@@ -78,10 +107,11 @@ int main(void)
     int new_fd;
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
-    char buf[BUFSIZE];
+    char rbuf[BUFSIZE];
     char pbuf[BUFSIZE*2];
     int size;
     struct pollfd ufds[MAXFDS];
+    struct buffer bufs[MAXFDS];
     int i;
     int rv;
 
@@ -130,6 +160,7 @@ int main(void)
                 ufds[nfds].fd = new_fd;
                 ufds[nfds].events = POLLIN;
                 ufds[nfds].revents = 0;
+                malloc_buffer(&bufs[nfds],BUFSIZE);
                 nfds++;
             }
         }
@@ -141,11 +172,14 @@ int main(void)
                 fprintf(stderr,"received POLLERR, closing socket\n");
                 /* close socket */
                 close(ufds[i].fd);
+                /* free buffer */
+                free_buffer(&bufs[i]);
 
                 /* delete pollfd from pollfds array */
                 int j;
                 for (j=i+1; j < nfds; j++) {
                     ufds[j-1] = ufds[j];
+                    bufs[j-1] = bufs[j];
                 }
                 /* one less socket */
                 nfds -= 1;
@@ -157,11 +191,14 @@ int main(void)
                 fprintf(stderr, "received POLLHUP, closing socket\n");
                 /* close socket */
                 close(ufds[i].fd);
+                /* free buffer */
+                free_buffer(&bufs[i]);
 
                 /* delete pollfd from pollfds array */
                 int j;
                 for (j=i+1; j < nfds; j++) {
                     ufds[j-1] = ufds[j];
+                    bufs[j-1] = bufs[j];
                 }
                 /* one less socket */
                 nfds -= 1;
@@ -174,9 +211,14 @@ int main(void)
                 /* shouldn't close socket, but need to remove it from
                 * pollfds.
                 * see stackoverflow.com/q/24791625 */
+
+                /* free buffer */
+                free_buffer(&bufs[i]);
+
                 int j;
                 for (j=i+1; j < nfds; j++) {
                     ufds[j-1] = ufds[j];
+                    bufs[j-1] = bufs[j];
                 }
                 nfds -= 1;
                 /* since the other pollfds were moved down by one
@@ -187,7 +229,7 @@ int main(void)
                 /* data ready from client */
 
                 printf("recv from %i\n",i);
-                size = recv(ufds[i].fd, buf, sizeof buf, 0);
+                size = recv(ufds[i].fd, rbuf, sizeof rbuf, 0);
 
                 if (size == -1) {
                     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
@@ -203,10 +245,13 @@ int main(void)
                     /* client disconnected */
                     printf("client disconnected\n");
                     close(ufds[i].fd);
+                    /* free buffer */
+                    free_buffer(&bufs[i]);
 
                     int j;
                     for (j=i+1; j < nfds; j++) {
                         ufds[j-1] = ufds[j];
+                        bufs[j-1] = bufs[j];
                     }
                     nfds -= 1;
                     /* since the other pollfds were moved down by one
@@ -215,14 +260,41 @@ int main(void)
                     continue;
                 }
 
-                buf[size] = '\0';
-                escape_string(pbuf,buf);
+                rbuf[size] = '\0';
+                escape_string(pbuf,rbuf);
                 int len = strlen(pbuf);
                 pbuf[len++] = '\n';
                 pbuf[len] = '\0';
                 printf("received: %s", pbuf);
+
+                /* need to check space left */
+                memcpy(bufs[i].tail,pbuf,strlen(pbuf));
+                bufs[i].tail += strlen(pbuf);
+                /* need to send data */
+                ufds[i].events |= POLLOUT;
+
                 /* just send, don't check return value */
-                send(ufds[i].fd,pbuf,strlen(pbuf),0);
+                //send(ufds[i].fd,pbuf,strlen(pbuf),0);
+            } else if (revents & POLLOUT) {
+                if (BYTES(bufs[i]) > 0) {
+                    int sent;
+                    sent = send(ufds[i].fd, bufs[i].head, BYTES(bufs[i]), 0);
+
+                    if (sent == -1) {
+                        perror("send");
+                        continue;
+                    }
+
+                    bufs[i].head += sent;
+                }
+
+                if (BYTES(bufs[i]) == 0) {
+                    /* no more data to send */
+                    ufds[i].events &= ~POLLOUT;
+                    /* reset head and tail pointers to beginning
+                     * of buffer */
+                    bufs[i].head = bufs[i].tail = bufs[i].buf;
+                }
             }
         }
     }
