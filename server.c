@@ -6,6 +6,60 @@
 #include "utils.h"
 
 #define MAXFDS 10
+#define BUFSIZE 256
+
+void escape_string(char *dest, char *src)
+{
+    /* escape special characters in src -> dest.
+    *  note: dest should be malloc'd to atleast 2x the size of src.
+    *  from http://stackoverflow.com/q/3535023 */
+    char c;
+
+    while (c = *(src++)) {
+        switch (c) {
+            case '\a':
+                *(dest++) = '\\';
+                *(dest++) = 'a';
+                break;
+            case '\b':
+                *(dest++) = '\\';
+                *(dest++) = 'b';
+                break;
+            case '\t':
+                *(dest++) = '\\';
+                *(dest++) = 't';
+                break;
+            case '\n':
+                *(dest++) = '\\';
+                *(dest++) = 'n';
+                break;
+            case '\v':
+                *(dest++) = '\\';
+                *(dest++) = 'v';
+                break;
+            case '\f':
+                *(dest++) = '\\';
+                *(dest++) = 'f';
+                break;
+            case '\r':
+                *(dest++) = '\\';
+                *(dest++) = 'r';
+                break;
+            case '\\':
+                *(dest++) = '\\';
+                *(dest++) = '\\';
+                break;
+            case '\"':
+                *(dest++) = '\\';
+                *(dest++) = '\"';
+                break;
+            default:
+                *(dest++) = c;
+        }
+    }
+
+    *dest = '\0';
+}
 
 int main(void)
 {
@@ -23,7 +77,8 @@ int main(void)
     int new_fd;
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
-    char buf[256];
+    char buf[BUFSIZE];
+    char pbuf[512];
     int size;
     struct pollfd ufds[MAXFDS];
     int i;
@@ -43,7 +98,8 @@ int main(void)
 
     while (1) {
 
-        rv = poll(ufds, nfds, 3500);
+        /* timeout after 60 seconds */
+        rv = poll(ufds, nfds, 60000);
 
         if (rv == -1) {
             perror("poll");
@@ -57,6 +113,7 @@ int main(void)
 
         if (ufds[0].revents & POLLIN) {
             /* client connected */
+
             int sin_size = sizeof their_addr;
 
             new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
@@ -70,13 +127,53 @@ int main(void)
                 s, sizeof s);
             printf("server: got connection from %s\n", s);
 
-            ufds[nfds].fd = new_fd;
-            ufds[nfds].events = POLLIN;
-            ufds[nfds].revents = 0;
-            nfds++;
+            if (nfds >= MAXFDS) {
+                fprintf(stderr, "too many clients\n");
+                close(new_fd);
+            } else {
+                ufds[nfds].fd = new_fd;
+                ufds[nfds].events = POLLIN;
+                ufds[nfds].revents = 0;
+                nfds++;
+            }
         }
 
         for (i=1; i < nfds; i++) {
+            if (ufds[i].revents & POLLHUP || ufds[i].revents & POLLERR) {
+                if (ufds[i].revents & POLLHUP) {
+                    printf("received POLLHUP\n");
+                } else if (ufds[i].revents & POLLERR) {
+                    printf("received POLLERR\n");
+                }
+                /* client disconnected */
+                printf("client disconnected\n");
+                close(ufds[i].fd);
+
+                int j;
+                for (j=i+1; j < nfds; j++) {
+                    ufds[j-1] = ufds[j];
+                }
+                nfds -= 1;
+                /* since the other pollfds were moved down by one
+                * we need to recheck ufds[i]; */
+                i -= 1;
+                continue;
+            } else if (ufds[i].revents & POLLNVAL) {
+                fprintf(stderr, "received POLLNVAL\n");
+                /* shouldn't close socket, but need to remove it from
+                * pollfds.
+                * see stackoverflow.com/q/24791625 */
+                int j;
+                for (j=i+1; j < nfds; j++) {
+                    ufds[j-1] = ufds[j];
+                }
+                nfds -= 1;
+                /* since the other pollfds were moved down by one
+                * we need to recheck ufds[i]; */
+                i -= 1;
+                continue;
+            }
+
             if (ufds[i].revents & POLLIN) {
                 /* data ready from client */
 
@@ -110,7 +207,8 @@ int main(void)
                 }
 
                 buf[size] = '\0';
-                printf("received: %s", buf);
+                escape_string(pbuf,buf);
+                printf("received: %s\n", pbuf);
                 //size = send(new_fd, buf, size, 0);
             }
         }
