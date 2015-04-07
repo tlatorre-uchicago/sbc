@@ -29,7 +29,7 @@ int setup_listen_socket(char *port, int backlog)
      * on port `port`.
      * `backlog` is the number of connections to queue up. */
     int sockfd;
-    struct addrinfo hints, *servino, *p;
+    struct addrinfo hints, *servinfo, *p;
     int yes = 1;
     int rv;
 
@@ -44,7 +44,7 @@ int setup_listen_socket(char *port, int backlog)
     }
 
     /* loop through all the results and bind to the first we can */
-    for (p = servinfo, p != NULL; p = p->ai_next) {
+    for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
             perror("server: socket");
             continue;
