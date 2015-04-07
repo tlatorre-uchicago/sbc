@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <sys/poll.h>
 #include <errno.h>
+#include <string.h>
 #include "utils.h"
 
 #define MAXFDS 10
@@ -78,21 +79,16 @@ int main(void)
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
     char buf[BUFSIZE];
-    char pbuf[512];
+    char pbuf[BUFSIZE*2];
     int size;
     struct pollfd ufds[MAXFDS];
     int i;
-    for (i=0; i < MAXFDS; i++) {
-        ufds[i].fd = -1;
-        ufds[i].events = 0;
-        ufds[i].revents = 0;
-    }
-    int nfds = 1;
     int rv;
 
     ufds[0].fd = sockfd;
     ufds[0].events = POLLIN;
     ufds[0].revents = 0;
+    int nfds = 1;
 
     printf("waiting for connections...\n");
 
@@ -139,27 +135,42 @@ int main(void)
         }
 
         for (i=1; i < nfds; i++) {
-            if (ufds[i].revents & POLLHUP || ufds[i].revents & POLLERR) {
-                if (ufds[i].revents & POLLHUP) {
-                    printf("received POLLHUP\n");
-                } else if (ufds[i].revents & POLLERR) {
-                    printf("received POLLERR\n");
-                }
-                /* client disconnected */
-                printf("client disconnected\n");
+            int revents = ufds[i].revents;
+
+            if (revents & POLLERR) {
+                fprintf(stderr,"received POLLERR, closing socket\n");
+                /* close socket */
                 close(ufds[i].fd);
 
+                /* delete pollfd from pollfds array */
                 int j;
                 for (j=i+1; j < nfds; j++) {
                     ufds[j-1] = ufds[j];
                 }
+                /* one less socket */
                 nfds -= 1;
                 /* since the other pollfds were moved down by one
                 * we need to recheck ufds[i]; */
                 i -= 1;
                 continue;
-            } else if (ufds[i].revents & POLLNVAL) {
-                fprintf(stderr, "received POLLNVAL\n");
+            } else if (revents & POLLHUP) {
+                fprintf(stderr, "received POLLHUP, closing socket\n");
+                /* close socket */
+                close(ufds[i].fd);
+
+                /* delete pollfd from pollfds array */
+                int j;
+                for (j=i+1; j < nfds; j++) {
+                    ufds[j-1] = ufds[j];
+                }
+                /* one less socket */
+                nfds -= 1;
+                /* since the other pollfds were moved down by one
+                * we need to recheck ufds[i]; */
+                i -= 1;
+                continue;
+            } else if (revents & POLLNVAL) {
+                fprintf(stderr, "received POLLNVAL, deleting socket\n");
                 /* shouldn't close socket, but need to remove it from
                 * pollfds.
                 * see stackoverflow.com/q/24791625 */
@@ -172,9 +183,7 @@ int main(void)
                 * we need to recheck ufds[i]; */
                 i -= 1;
                 continue;
-            }
-
-            if (ufds[i].revents & POLLIN) {
+            } else if (revents & POLLIN) {
                 /* data ready from client */
 
                 printf("recv from %i\n",i);
@@ -208,8 +217,12 @@ int main(void)
 
                 buf[size] = '\0';
                 escape_string(pbuf,buf);
-                printf("received: %s\n", pbuf);
-                //size = send(new_fd, buf, size, 0);
+                int len = strlen(pbuf);
+                pbuf[len++] = '\n';
+                pbuf[len] = '\0';
+                printf("received: %s", pbuf);
+                /* just send, don't check return value */
+                send(ufds[i].fd,pbuf,strlen(pbuf),0);
             }
         }
     }
