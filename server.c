@@ -72,6 +72,7 @@ struct buffer
 };
 
 #define BYTES(x) (x.tail - x.head)
+#define FLUSH(x) (memmove(x.buf,x.head,BYTES(x)))
 
 void malloc_buffer(struct buffer *b, unsigned int size)
 {
@@ -267,14 +268,31 @@ int main(void)
                 pbuf[len] = '\0';
                 printf("received: %s", pbuf);
 
-                /* need to check space left */
-                memcpy(bufs[i].tail,pbuf,strlen(pbuf));
-                bufs[i].tail += strlen(pbuf);
-                /* need to send data */
-                ufds[i].events |= POLLOUT;
+                /* move data back to beginning of buffer */
+                FLUSH(bufs[i]);
 
-                /* just send, don't check return value */
-                //send(ufds[i].fd,pbuf,strlen(pbuf),0);
+                if (strlen(pbuf) > BYTES(bufs[i])) {
+                    /* not enough space left */
+                    int sin_size = sizeof their_addr;
+
+                    rv = getpeername(ufds[i].fd,
+                        (struct sockaddr *)&their_addr, &sin_size);
+                    if (rv == -1) {
+                        perror("getpeername");
+                        s[0] = '?';
+                        s[1] = '\0';
+                    }
+
+                    inet_ntop(their_addr.ss_family,
+                        get_in_addr((struct sockaddr *)&their_addr),
+                        s, sizeof s);
+                    fprintf(stderr, "ERROR: output buffer full for %s\n",s);
+                } else {
+                    memcpy(bufs[i].tail,pbuf,strlen(pbuf));
+                    bufs[i].tail += strlen(pbuf);
+                    /* need to send data */
+                    ufds[i].events |= POLLOUT;
+                }
             } else if (revents & POLLOUT) {
                 if (BYTES(bufs[i]) > 0) {
                     int sent;
