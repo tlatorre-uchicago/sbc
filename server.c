@@ -4,6 +4,7 @@
 #include <sys/poll.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 #include "utils.h"
 
 #define MAXFDS 10
@@ -115,6 +116,10 @@ int main(void)
     struct buffer bufs[MAXFDS];
     int i;
     int rv;
+    /* time pointer for status */
+    time_t t;
+    struct tm *timeinfo;
+    char timestr[256];
 
     ufds[0].fd = sockfd;
     ufds[0].events = POLLIN;
@@ -125,8 +130,8 @@ int main(void)
 
     while (1) {
 
-        /* timeout after 60 seconds */
-        rv = poll(ufds, nfds, 60000);
+        /* timeout after 10 seconds */
+        rv = poll(ufds, nfds, 10000);
 
         if (rv == -1) {
             perror("poll");
@@ -134,7 +139,17 @@ int main(void)
         } 
             
         if (rv == 0) {
-            printf("poll() timeout\n");
+            t = time(NULL);
+            timeinfo = localtime(&t);
+
+            if (timeinfo == NULL) {
+                perror("localtime");
+            } else if (strftime(timestr, sizeof(timestr),
+                "%F %T", timeinfo) == 0) {
+                fprintf(stderr, "strftime returned 0\n");
+            } else {
+                printf("%s - %i clients connected\n", timestr, nfds-1);
+            }
             continue;
         }
 
