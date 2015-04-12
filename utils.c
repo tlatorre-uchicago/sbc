@@ -10,6 +10,58 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 
+void escape_string(char *dest, char *src)
+{
+    /* escape special characters in src -> dest.
+    *  note: dest should be malloc'd to atleast 2x the size of src.
+    *  from http://stackoverflow.com/q/3535023 */
+    char c;
+
+    while ((c = *(src++))) {
+        switch (c) {
+            case '\a':
+                *(dest++) = '\\';
+                *(dest++) = 'a';
+                break;
+            case '\b':
+                *(dest++) = '\\';
+                *(dest++) = 'b';
+                break;
+            case '\t':
+                *(dest++) = '\\';
+                *(dest++) = 't';
+                break;
+            case '\n':
+                *(dest++) = '\\';
+                *(dest++) = 'n';
+                break;
+            case '\v':
+                *(dest++) = '\\';
+                *(dest++) = 'v';
+                break;
+            case '\f':
+                *(dest++) = '\\';
+                *(dest++) = 'f';
+                break;
+            case '\r':
+                *(dest++) = '\\';
+                *(dest++) = 'r';
+                break;
+            case '\\':
+                *(dest++) = '\\';
+                *(dest++) = '\\';
+                break;
+            case '\"':
+                *(dest++) = '\\';
+                *(dest++) = '\"';
+                break;
+            default:
+                *(dest++) = c;
+        }
+    }
+
+    *dest = '\0';
+}
 
 void *get_in_addr(struct sockaddr *sa)
 {

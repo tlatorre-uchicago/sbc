@@ -9,103 +9,20 @@
 #include <unistd.h>
 #include "utils.h"
 #include "tpoll.h"
+#include "buf.h"
 
-#define MAXFDS 100
+/* send/receive buffers for sockets are indexed by the file descriptor.
+ * The buffers are accessed by indexing a fixed length array so we have
+ * a maximum file descriptor */
+#define MAXFD 100
+/* buffer size for the send/recv buffers */
 #define BUFSIZE 256
+/* maximum number of file descriptor events for poll() */
 #define MAX_EVENTS 100
-
-void escape_string(char *dest, char *src)
-{
-    /* escape special characters in src -> dest.
-    *  note: dest should be malloc'd to atleast 2x the size of src.
-    *  from http://stackoverflow.com/q/3535023 */
-    char c;
-
-    while ((c = *(src++))) {
-        switch (c) {
-            case '\a':
-                *(dest++) = '\\';
-                *(dest++) = 'a';
-                break;
-            case '\b':
-                *(dest++) = '\\';
-                *(dest++) = 'b';
-                break;
-            case '\t':
-                *(dest++) = '\\';
-                *(dest++) = 't';
-                break;
-            case '\n':
-                *(dest++) = '\\';
-                *(dest++) = 'n';
-                break;
-            case '\v':
-                *(dest++) = '\\';
-                *(dest++) = 'v';
-                break;
-            case '\f':
-                *(dest++) = '\\';
-                *(dest++) = 'f';
-                break;
-            case '\r':
-                *(dest++) = '\\';
-                *(dest++) = 'r';
-                break;
-            case '\\':
-                *(dest++) = '\\';
-                *(dest++) = '\\';
-                break;
-            case '\"':
-                *(dest++) = '\\';
-                *(dest++) = '\"';
-                break;
-            default:
-                *(dest++) = c;
-        }
-    }
-
-    *dest = '\0';
-}
-
-/* a struct for buffering outgoing data */
-struct buffer
-{
-    char *buf;
-    char *head;
-    char *tail;
-    unsigned int size;
-};
-
-#define BYTES(x) (x.tail - x.head)
-
-void flush(struct buffer *b)
-{
-    /* move the buffer to the beginning of the array. */
-    unsigned int tmp = (b->tail - b->head);
-    memmove(b->buf, b->head, tmp);
-    b->head = b->buf;
-    b->tail -= tmp;
-}
-
-void malloc_buffer(struct buffer *b, unsigned int size)
-{
-    /* malloc a buffer with `size` elements */
-    b->buf = malloc(size);
-    b->head = b->tail = b->buf;
-    b->size = size;
-}
-
-void free_buffer(struct buffer *b)
-{
-    free(b->buf);
-    b->head = b->tail = NULL;
-    b->size = -1;
-}
 
 int main(void)
 {
     int sockfd;
-    //int dispatchfd;
 
     if ((sockfd = setup_listen_socket("3490",10)) < 0) {
         fprintf(stderr, "failed to setup listening socket\n");
@@ -118,20 +35,22 @@ int main(void)
     int new_fd;
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
-    char rbuf[BUFSIZE];
-    char pbuf[BUFSIZE*2];
-    int size;
-    /* struct pollfd ufds[MAXFDS]; */
+    /* polling object */
     struct tpoll *p = tpoll_create();
     struct tpoll_event ev, evs[MAX_EVENTS];
-    struct buffer bufs[MAXFDS];
-    int i;
-    int rv, nfds;
+    /* send/recv buffers */
+    struct buffer sbuf[MAXFD];
+    struct buffer rbuf[MAXFD];
+    /* temporary buffer */
+    char tmpbuf[BUFSIZE*2];
+    int i, nfds;
     /* time pointer for status */
     time_t t;
     struct tm *timeinfo;
     char timestr[256];
+    /* timespec for printing info every 10 seconds */
     struct timespec time_last, time_now;
+    int size;
 
     clock_gettime(CLOCK_MONOTONIC, &time_now);
     time_last = time_now;
@@ -199,12 +118,13 @@ int main(void)
                         close(new_fd);
                     } else {
                         /* successfully added */
-                        if (new_fd > MAXFDS-1) {
+                        if (new_fd > MAXFD-1) {
                             fprintf(stderr, "fd is > MAXFD\n");
                             tpoll_del(p, new_fd);
                             close(new_fd);
                         } else {
-                            malloc_buffer(&bufs[new_fd],BUFSIZE);
+                            buf_create(&rbuf[new_fd],BUFSIZE);
+                            buf_create(&sbuf[new_fd],BUFSIZE);
                         }
                     }
                 } else {
@@ -218,8 +138,9 @@ int main(void)
                 fprintf(stderr,"received POLLERR/POLLHUP, closing socket\n");
                 /* close socket */
                 close(ev.fd);
-                /* free buffer */
-                free_buffer(&bufs[ev.fd]);
+                /* free buffers */
+                buf_free(&rbuf[ev.fd]);
+                buf_free(&sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
                 continue;
@@ -230,17 +151,21 @@ int main(void)
                  * pollfds.
                  * see stackoverflow.com/q/24791625 */
 
-                /* free buffer */
-                free_buffer(&bufs[ev.fd]);
+                /* free buffers */
+                buf_free(&rbuf[ev.fd]);
+                buf_free(&sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
                 continue;
             }
             if (ev.events & POLLIN) {
                 /* data ready from client */
-
+#ifdef DEBUG
                 printf("recv from %i\n",ev.fd);
-                size = recv(ev.fd, rbuf, sizeof rbuf, 0);
+#endif
+                /* todo: check free_space and flush() if needed */
+                buf_flush(&rbuf[ev.fd]);
+                size = recv(ev.fd, rbuf[ev.fd].tail, FREE_SPACE(rbuf[ev.fd]), 0);
 
                 if (size == -1) {
                     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
@@ -252,65 +177,71 @@ int main(void)
                     /* client disconnected */
                     printf("client disconnected\n");
                     close(ev.fd);
-                    /* free buffer */
-                    free_buffer(&bufs[ev.fd]);
+                    /* free buffers */
+                    buf_free(&rbuf[ev.fd]);
+                    buf_free(&sbuf[ev.fd]);
                     /* delete fd from tpoll */
                     tpoll_del(p,ev.fd);
                     continue;
                 } else {
-                    rbuf[size] = '\0';
-                    escape_string(pbuf,rbuf);
-                    int len = strlen(pbuf);
-                    pbuf[len++] = '\n';
-                    pbuf[len] = '\0';
-                    printf("received: %s", pbuf);
-
-                    /* move data back to beginning of buffer */
-                    flush(&bufs[ev.fd]);
-
-                    if (strlen(pbuf) > (bufs[ev.fd].size - BYTES(bufs[ev.fd]))) {
-                        /* not enough space left */
-                        socklen_t sin_size = sizeof their_addr;
-
-                        rv = getpeername(ev.fd,
-                            (struct sockaddr *)&their_addr, &sin_size);
-                        if (rv == -1) {
-                            perror("getpeername");
-                            s[0] = '?';
-                            s[1] = '\0';
-                        } else {
-                            /* get ip address */
-                            inet_ntop(their_addr.ss_family,
-                                get_in_addr((struct sockaddr *)&their_addr),
-                                s, sizeof s);
-                        }
-                        fprintf(stderr, "ERROR: output buffer full for %s\n",s);
-                    } else {
-                        memcpy(bufs[ev.fd].tail,pbuf,strlen(pbuf));
-                        bufs[ev.fd].tail += strlen(pbuf);
-                        /* need to send data */
-                        tpoll_modify_or(p, ev.fd, POLLOUT);
-                    }
+                    rbuf[ev.fd].tail += size;
                 }
             }
             if (ev.events & POLLOUT) {
-                if (BYTES(bufs[ev.fd]) > 0) {
+                if (BYTES(sbuf[ev.fd]) > 0) {
                     int sent;
-                    sent = send(ev.fd, bufs[ev.fd].head, BYTES(bufs[ev.fd]), 0);
+                    sent = send(ev.fd, sbuf[ev.fd].head, BYTES(sbuf[ev.fd]), 0);
 
                     if (sent == -1) {
                         perror("send");
                     } else {
-                        bufs[ev.fd].head += sent;
+                        sbuf[ev.fd].head += sent;
                     }
                 }
 
-                if (BYTES(bufs[ev.fd]) == 0) {
+                if (BYTES(sbuf[ev.fd]) == 0) {
                     /* no more data to send */
                     tpoll_modify_and(p, ev.fd, ~POLLOUT);
                     /* reset head and tail pointers to beginning
                      * of buffer */
-                    bufs[ev.fd].head = bufs[ev.fd].tail = bufs[ev.fd].buf;
+                    sbuf[ev.fd].head = sbuf[ev.fd].tail = sbuf[ev.fd].buf;
+                }
+            }
+            /* basic I/O done, now check for messages */
+            if (ev.events & POLLIN) {
+                /* check for data */
+                int n = buf_read(&rbuf[ev.fd],tmpbuf,BYTES(rbuf[ev.fd]));
+                if (n < 0) {
+                    fprintf(stderr,"buf_read failed\n");
+                }
+                tmpbuf[n] = '\0';
+                printf("recv: %s",tmpbuf);
+
+                char printbuf[BUFSIZE*2];
+                escape_string(printbuf,tmpbuf);
+                int len = strlen(printbuf);
+                printbuf[len++] = '\n';
+                printbuf[len] = '\0';
+                printf("received: %s", printbuf);
+
+                if (buf_write(&sbuf[ev.fd],printbuf,strlen(printbuf)) < 0) {
+                    socklen_t sin_size = sizeof their_addr;
+
+                    if (getpeername(ev.fd, (struct sockaddr *)&their_addr,
+                                    &sin_size)) {
+                        perror("getpeername");
+                        s[0] = '?';
+                        s[1] = '\0';
+                    } else {
+                        /* get ip address */
+                        inet_ntop(their_addr.ss_family,
+                            get_in_addr((struct sockaddr *)&their_addr),
+                            s, sizeof s);
+                    }
+                    fprintf(stderr, "ERROR: output buffer full for %s\n",s);
+                } else {
+                    /* need to send data */
+                    tpoll_modify_or(p, ev.fd, POLLOUT);
                 }
             }
         }

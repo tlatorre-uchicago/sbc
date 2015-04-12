@@ -463,7 +463,6 @@ void unpack(unsigned char *buf, char *format, ...)
 	va_end(ap);
 }
 
-#define DEBUG
 #ifdef DEBUG
 #include <limits.h>
 #include <float.h>
