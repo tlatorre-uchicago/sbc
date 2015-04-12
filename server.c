@@ -10,7 +10,7 @@
 #include "utils.h"
 #include "tpoll.h"
 
-#define MAXFDS 10
+#define MAXFDS 100
 #define BUFSIZE 256
 #define MAX_EVENTS 100
 
@@ -114,7 +114,7 @@ int main(void)
 
     /* connector's address info */
     struct sockaddr_storage their_addr;
-    /* file descriptor to new connection*/
+    /* file descriptor to new connection */
     int new_fd;
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
@@ -148,6 +148,7 @@ int main(void)
         } 
             
         if (nfds == 0) {
+            /* poll() timeout */
             t = time(NULL);
             timeinfo = localtime(&t);
 
@@ -172,7 +173,7 @@ int main(void)
                     socklen_t sin_size = sizeof their_addr;
 
                     new_fd = accept(sockfd, (struct sockaddr *)&their_addr,
-                            &sin_size);
+                                    &sin_size);
                     if (new_fd == -1) {
                         perror("accept");
                         continue;
@@ -183,18 +184,19 @@ int main(void)
                         s, sizeof s);
                     printf("server: got connection from %s\n", s);
 
-                    if (p->nfds >= MAXFDS) {
-                        /* fixme : tpoll should warn when adding */
+                        
+                    if (tpoll_add(p, new_fd, POLLIN)) {
                         fprintf(stderr, "too many clients\n");
                         close(new_fd);
                     } else {
-                        /* fixme : tpoll should warn when adding */
-                        tpoll_add(p, new_fd, POLLIN);
-                        if (new_fd > MAXFDS) {
+                        /* successfully added */
+                        if (new_fd > MAXFDS-1) {
                             fprintf(stderr, "fd is > MAXFD\n");
-                            exit(1);
+                            tpoll_del(p, new_fd);
+                            close(new_fd);
+                        } else {
+                            malloc_buffer(&bufs[new_fd],BUFSIZE);
                         }
-                        malloc_buffer(&bufs[new_fd],BUFSIZE);
                     }
                 } else {
                     fprintf(stderr, "Listening socket got %i event",ev.events);
@@ -216,8 +218,8 @@ int main(void)
             if (ev.events & POLLNVAL) {
                 fprintf(stderr, "received POLLNVAL, deleting socket\n");
                 /* shouldn't close socket, but need to remove it from
-                * pollfds.
-                * see stackoverflow.com/q/24791625 */
+                 * pollfds.
+                 * see stackoverflow.com/q/24791625 */
 
                 /* free buffer */
                 free_buffer(&bufs[ev.fd]);
@@ -304,6 +306,8 @@ int main(void)
             }
         }
     }
+
+    tpoll_free(p);
 
     return 0;
 }
