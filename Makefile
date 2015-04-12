@@ -1,7 +1,7 @@
 all: server pack
 
 CC=cc
-CFLAGS=-O0 -Wall
+CFLAGS=-O4 -Wall
 
 tpoll.o: tpoll.c
 	$(CC) $(CFLAGS) -c tpoll.c
@@ -10,7 +10,7 @@ utils.o: utils.c
 	$(CC) $(CFLAGS) -c utils.c
 
 server: utils.o server.c tpoll.o
-	$(CC) $(CFLAGS) server.c utils.o tpoll.o -o server
+	$(CC) $(CFLAGS) server.c utils.o tpoll.o -o server -lrt
 
 pack.o: pack.c
 	$(CC) $(CFLAGS) -c pack.c

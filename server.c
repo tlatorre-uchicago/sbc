@@ -131,6 +131,10 @@ int main(void)
     time_t t;
     struct tm *timeinfo;
     char timestr[256];
+    struct timespec time_last, time_now;
+
+    clock_gettime(CLOCK_MONOTONIC, &time_now);
+    time_last = time_now;
 
     /* need to check return value here */
     tpoll_add(p, sockfd, POLLIN);
@@ -140,15 +144,17 @@ int main(void)
     while (1) {
 
         /* timeout after 10 seconds */
-        nfds = tpoll_poll(p, evs, MAX_EVENTS, 10000);
+        nfds = tpoll_poll(p, evs, MAX_EVENTS, 1000);
+
+        clock_gettime(CLOCK_MONOTONIC, &time_now);
 
         if (nfds == -1) {
             perror("poll");
             continue;
         } 
             
-        if (nfds == 0) {
-            /* poll() timeout */
+        if (time_now.tv_sec > time_last.tv_sec + 10) {
+            time_last = time_now;
             t = time(NULL);
             timeinfo = localtime(&t);
 
@@ -162,6 +168,9 @@ int main(void)
             }
             continue;
         }
+
+        /* poll() timeout */
+        if (nfds == 0) continue;
 
         for (i = 0; i < nfds; i++) {
             ev = evs[i];
