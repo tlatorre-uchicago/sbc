@@ -73,7 +73,14 @@ struct buffer
 };
 
 #define BYTES(x) (x.tail - x.head)
-#define FLUSH(x) (memmove(x.buf,x.head,BYTES(x)))
+
+void flush(struct buffer *b)
+{
+    unsigned int tmp = (b->tail - b->head);
+    memmove(b->buf, b->head, tmp);
+    b->head = b->buf;
+    b->tail -= tmp;
+}
 
 void malloc_buffer(struct buffer *b, unsigned int size)
 {
@@ -89,9 +96,6 @@ void free_buffer(struct buffer *b)
     b->head = b->tail = NULL;
     b->size = -1;
 }
-
-#define LEN(buf) (buf->tail - buf->head)
-#define BYTES_LEFT(buf) (buf->size - (buf->tail - buf->head))
 
 int main(void)
 {
@@ -148,7 +152,7 @@ int main(void)
                 "%F %T", timeinfo) == 0) {
                 fprintf(stderr, "strftime returned 0\n");
             } else {
-                printf("%s - %i clients connected\n", timestr, nfds-1);
+                printf("%s - %i client(s) connected\n", timestr, nfds-1);
             }
             continue;
         }
@@ -284,7 +288,7 @@ int main(void)
                 printf("received: %s", pbuf);
 
                 /* move data back to beginning of buffer */
-                FLUSH(bufs[i]);
+                flush(&bufs[i]);
 
                 if (strlen(pbuf) > (bufs[i].size - BYTES(bufs[i]))) {
                     /* not enough space left */
