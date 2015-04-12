@@ -603,7 +603,7 @@ int main(void)
 					buf[0], buf[1], buf[2], buf[3],
 					buf[4], buf[5], buf[6], buf[7]);
 			} else {
-				printf("f64: OK: %f == %f\n", f, f2);
+				printf("f64: OK: %Lf == %Lf\n", f, f2);
 			}
 		}
 	}

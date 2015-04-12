@@ -1,18 +1,22 @@
 all: server pack
 
-CFLAGS=-O4
+CC=cc
+CFLAGS=-O0 -Wall
 
 tpoll.o: tpoll.c
-	cc -c tpoll.c $(CFLAGS)
+	$(CC) $(CFLAGS) -c tpoll.c
 
 utils.o: utils.c
-	cc -c utils.c $(CFLAGS)
+	$(CC) $(CFLAGS) -c utils.c
 
 server: utils.o server.c tpoll.o
-	cc server.c utils.o tpoll.o -o server $(CFLAGS)
+	$(CC) $(CFLAGS) server.c utils.o tpoll.o -o server
 
 pack.o: pack.c
-	cc -c pack.c $(CFLAGS)
+	$(CC) $(CFLAGS) -c pack.c
 
 pack: pack.o
-	cc pack.o -DDEBUG -o pack $(CFLAGS)
+	$(CC) $(CFLAGS) pack.o -DDEBUG -o pack
+
+clean:
+	rm *.o server pack

@@ -5,6 +5,7 @@ struct tpoll *tpoll_create() {
     /* create a poll object */
     struct tpoll *p = malloc(sizeof (struct tpoll));
     p->nfds = 0;
+    return p;
 }
 
 void tpoll_free(struct tpoll *p) {

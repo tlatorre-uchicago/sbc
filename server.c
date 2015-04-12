@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <sys/poll.h>
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include "utils.h"
 #include "tpoll.h"
 
@@ -19,7 +21,7 @@ void escape_string(char *dest, char *src)
     *  from http://stackoverflow.com/q/3535023 */
     char c;
 
-    while (c = *(src++)) {
+    while ((c = *(src++))) {
         switch (c) {
             case '\a':
                 *(dest++) = '\\';
@@ -103,7 +105,7 @@ void free_buffer(struct buffer *b)
 int main(void)
 {
     int sockfd;
-    int dispatchfd;
+    //int dispatchfd;
 
     if ((sockfd = setup_listen_socket("3490",10)) < 0) {
         fprintf(stderr, "failed to setup listening socket\n");
@@ -167,7 +169,7 @@ int main(void)
                 if (ev.events & POLLIN) {
                     /* client connected */
 
-                    int sin_size = sizeof their_addr;
+                    socklen_t sin_size = sizeof their_addr;
 
                     new_fd = accept(sockfd, (struct sockaddr *)&their_addr,
                             &sin_size);
@@ -257,7 +259,7 @@ int main(void)
 
                     if (strlen(pbuf) > (bufs[ev.fd].size - BYTES(bufs[ev.fd]))) {
                         /* not enough space left */
-                        int sin_size = sizeof their_addr;
+                        socklen_t sin_size = sizeof their_addr;
 
                         rv = getpeername(ev.fd,
                             (struct sockaddr *)&their_addr, &sin_size);
