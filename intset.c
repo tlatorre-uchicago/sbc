@@ -2,14 +2,14 @@
 #include <stdlib.h>
 #include "intset.h"
 
-struct intset *intset_init(unsigned int size)
+struct intset *intset_init()
 {
     /* create and return a pointer to an intset. `size`
      * is the maximum size of the set. */
     struct intset *s = malloc(sizeof (struct intset));
-    s->values = malloc((sizeof (int))*size);
+    s->values = malloc(0);
+    s->size = 0;
     s->entries = 0;
-    s->size = size;
     return s;
 }
 
@@ -23,9 +23,13 @@ void intset_free(struct intset *s)
 int intset_add(struct intset *s, int value)
 {
     /* add an integer to the set. If the integer already exists,
-     * returns -1. If the set is full, returns -2. */
+     * returns -1.*/
     if (intset_in(s, value)) return -1;
-    if (s->entries == s->size) return -2;
+    if (s->entries == s->size) {
+	/* resize array. inspired by python's list implementation */
+	s->size += ((s->size + 1) >> 3) + ((s->size + 1) < 9 ? 3 : 6);
+	s->values = realloc(s->values,(sizeof(int))*s->size);
+    }
     s->values[s->entries++] = value;
     return 0;
 }
