@@ -7,10 +7,17 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
 #include "utils.h"
 #include "tpoll.h"
 #include "buf.h"
 #include "intset.h"
+
+static volatile int go = 1;
+
+void ctrlc_handler(int _) {
+    go = 0;
+}
 
 /* send/receive buffers for sockets are indexed by the file descriptor.
  * The buffers are accessed by indexing a fixed length array so we have
@@ -23,6 +30,8 @@
 
 int main(void)
 {
+    signal(SIGINT, ctrlc_handler);
+
     int sockfd;
     int dispfd;
 
@@ -71,7 +80,7 @@ int main(void)
 
     printf("waiting for connections...\n");
 
-    while (1) {
+    while (go) {
 
         /* timeout after 10 seconds */
         nfds = tpoll_poll(p, evs, MAX_EVENTS, 1000);
@@ -295,6 +304,8 @@ int main(void)
     }
 
     tpoll_free(p);
+    intset_free(dispset);
+    intset_free(sockset);
 
     return 0;
 }
