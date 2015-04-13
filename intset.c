@@ -25,9 +25,9 @@ int intset_add(struct intset *s, int value)
      * returns -1.*/
     if (intset_in(s, value)) return -1;
     if (s->entries == s->size) {
-	/* resize array. inspired by python's list implementation */
-	s->size += ((s->size + 1) >> 3) + ((s->size + 1) < 9 ? 3 : 6);
-	s->values = realloc(s->values,(sizeof(int))*s->size);
+        /* resize array. inspired by python's list implementation */
+        s->size += ((s->size + 1) >> 3) + ((s->size + 1) < 9 ? 3 : 6);
+        s->values = realloc(s->values,(sizeof(int))*s->size);
     }
     s->values[s->entries++] = value;
     return 0;
@@ -52,7 +52,7 @@ int intset_del(struct intset *s, int value)
         if (s->values[i] == value) {
             memmove(s->values+i,s->values+i+(sizeof (int)),
                     (s->entries - i - 1)*(sizeof (int)));
-	    s->entries -= 1;
+        s->entries -= 1;
             return 0;
         }
     }
