@@ -6,7 +6,7 @@
  *
  * Example:
  *
- * struct intset *s = intset_init(100);
+ * struct intset *s = intset_init();
  * intset_add(s,10);
  * intset_in(s,10);     # returns 1
  * intset_in(s,1);      # returns 0
