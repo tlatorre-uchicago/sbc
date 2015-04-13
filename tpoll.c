@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "tpoll.h"
 
 struct tpoll *tpoll_init() {
