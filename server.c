@@ -10,6 +10,7 @@
 #include "utils.h"
 #include "tpoll.h"
 #include "buf.h"
+#include "intset.h"
 
 /* send/receive buffers for sockets are indexed by the file descriptor.
  * The buffers are accessed by indexing a fixed length array so we have
@@ -23,9 +24,18 @@
 int main(void)
 {
     int sockfd;
+    int dispfd;
+
+    struct intset *dispset = intset_init(MAXFD);
+    struct intset *clientset = intset_init(MAXFD);
 
     if ((sockfd = setup_listen_socket("3490",10)) < 0) {
-        fprintf(stderr, "failed to setup listening socket\n");
+        fprintf(stderr, "failed to setup listening socket on port 3490\n");
+        exit(1);
+    }
+
+    if ((dispfd = setup_listen_socket("3491",10)) < 0) {
+        fprintf(stderr, "failed to setup listening socket on port 3491\n");
         exit(1);
     }
 
@@ -57,6 +67,7 @@ int main(void)
 
     /* need to check return value here */
     tpoll_add(p, sockfd, POLLIN);
+    tpoll_add(p, dispfd, POLLIN);
 
     printf("waiting for connections...\n");
 
@@ -94,13 +105,14 @@ int main(void)
         for (i = 0; i < nfds; i++) {
             ev = evs[i];
 
-            if (ev.fd == sockfd) {
+            if (ev.fd == sockfd || ev.fd == dispfd) {
                 if (ev.events & POLLIN) {
                     /* client connected */
+                    fprintf(stderr, "client connected\n");
 
                     socklen_t sin_size = sizeof their_addr;
 
-                    new_fd = accept(sockfd, (struct sockaddr *)&their_addr,
+                    new_fd = accept(ev.fd, (struct sockaddr *)&their_addr,
                                     &sin_size);
                     if (new_fd == -1) {
                         perror("accept");
@@ -123,8 +135,29 @@ int main(void)
                             tpoll_del(p, new_fd);
                             close(new_fd);
                         } else {
-                            buf_create(&rbuf[new_fd],BUFSIZE);
-                            buf_create(&sbuf[new_fd],BUFSIZE);
+                            if (ev.fd == sockfd) {
+                                if (intset_add(clientset,new_fd) != 0) {
+                                    fprintf(stderr,
+                                            "failed to add fd to intset\n");
+                                    tpoll_del(p, new_fd);
+                                    close(new_fd);
+                                } else {
+                                    /* create send/recv buffers */
+                                    buf_create(&rbuf[new_fd],BUFSIZE);
+                                    buf_create(&sbuf[new_fd],BUFSIZE);
+                                }
+                            } else if (ev.fd == dispfd) {
+                                if (intset_add(dispset,new_fd) != 0) {
+                                    fprintf(stderr,
+                                            "failed to add fd to intset\n");
+                                    tpoll_del(p, new_fd);
+                                    close(new_fd);
+                                } else {
+                                    /* create send/recv buffers */
+                                    buf_create(&rbuf[new_fd],BUFSIZE);
+                                    buf_create(&sbuf[new_fd],BUFSIZE);
+                                }
+                            }
                         }
                     }
                 } else {
@@ -224,25 +257,30 @@ int main(void)
                 printbuf[len] = '\0';
                 printf("received: %s", printbuf);
 
-                if (buf_write(&sbuf[ev.fd],printbuf,strlen(printbuf)) < 0) {
-                    socklen_t sin_size = sizeof their_addr;
+                /* relay to all dispatchers */
+                int j;
+                for (j = 0; j < dispset->entries; j++) {
+                    int fd = dispset->values[j];
+                    if (buf_write(&sbuf[fd],printbuf,strlen(printbuf)) < 0) {
+                        socklen_t sin_size = sizeof their_addr;
 
-                    if (getpeername(ev.fd, (struct sockaddr *)&their_addr,
-                                    &sin_size)) {
-                        perror("getpeername");
-                        s[0] = '?';
-                        s[1] = '\0';
+                        if (getpeername(ev.fd, (struct sockaddr *)&their_addr,
+                                        &sin_size)) {
+                            perror("getpeername");
+                            s[0] = '?';
+                            s[1] = '\0';
+                        } else {
+                            /* get ip address */
+                            inet_ntop(their_addr.ss_family,
+                                get_in_addr((struct sockaddr *)&their_addr),
+                                s, sizeof s);
+                        }
+                        fprintf(stderr, "ERROR: output buffer full for %s\n",s);
                     } else {
-                        /* get ip address */
-                        inet_ntop(their_addr.ss_family,
-                            get_in_addr((struct sockaddr *)&their_addr),
-                            s, sizeof s);
+                        /* need to send data */
+                        tpoll_modify_or(p, fd, POLLOUT);
                     }
-                    fprintf(stderr, "ERROR: output buffer full for %s\n",s);
-                } else {
-                    /* need to send data */
-                    tpoll_modify_or(p, ev.fd, POLLOUT);
-                }
+                } /* for loop for dispatchers */
             }
         }
     }
