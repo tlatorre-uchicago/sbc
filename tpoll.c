@@ -10,6 +10,17 @@ struct tpoll *tpoll_init() {
     return p;
 }
 
+int tpoll_in(struct tpoll *p, int fd)
+{
+    /* returns 1 if the file descriptor is registered, otherwise zero. */
+    int i;
+    for (i = 0; i < p->entries; i++) {
+        if (p->ufds[i].fd == fd) return 1;
+    }
+    return 0;
+}
+
+
 void tpoll_free(struct tpoll *p) {
     /* free tpoll object */
     free(p->ufds);
@@ -54,6 +65,7 @@ int tpoll_modify_and(struct tpoll *p, int fd, uint32_t eventmask) {
 
 int tpoll_add(struct tpoll *p, int fd, uint32_t eventmask) {
     /* register a new file descriptor */
+    if (tpoll_in(p, fd)) return -1;
     if (p->entries == p->size) {
         /* resize array. inspired by python's list implementation */
         p->size += ((p->size + 1) >> 3) + ((p->size + 1) < 9 ? 3 : 6);
@@ -87,9 +99,7 @@ int tpoll_poll(struct tpoll *p, struct tpoll_event *evs, int maxevents,
 
     for (i = 0; i < p->entries; i++) {
         if (p->ufds[i].revents) {
-            evs[n].fd = p->ufds[i].fd;
-            evs[n].events = p->ufds[i].revents;
-            n++;
+            evs[n++] = (struct tpoll_event) { p->ufds[i].fd, p->ufds[i].revents };
             if (n == maxevents) break;
         }
     }
