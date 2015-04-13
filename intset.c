@@ -4,8 +4,7 @@
 
 struct intset *intset_init()
 {
-    /* create and return a pointer to an intset. `size`
-     * is the maximum size of the set. */
+    /* create and return a pointer to an intset. */
     struct intset *s = malloc(sizeof (struct intset));
     s->values = malloc(0);
     s->size = 0;

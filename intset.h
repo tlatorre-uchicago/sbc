@@ -8,10 +8,11 @@
  *
  * struct intset *s = intset_init(100);
  * intset_add(s,10);
- * intset_in(s,10); # returns 1
- * intset_in(s,1); # returns 0
+ * intset_in(s,10);     # returns 1
+ * intset_in(s,1);      # returns 0
  * intset_del(s,10);
- * intset_in(s,10) # returns 0
+ * intset_in(s,10);     # returns 0
+ * intset_free(s);      # make sure to free it!
  *
  */
 
