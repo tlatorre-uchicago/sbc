@@ -1,7 +1,7 @@
 /*
  *  serialize data for sending over a socket.
  *
- *  from http://beej.us/guide/bgnet/output/html/multipage/advanced.html
+ *  from http://beej.us/guide/bgnet/examples/pack2b.c
  *
  *  Example:
  *
