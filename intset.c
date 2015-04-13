@@ -49,6 +49,7 @@ int intset_del(struct intset *s, int value)
         if (s->values[i] == value) {
             memmove(s->values+i,s->values+i+(sizeof (int)),
                     (s->entries - i - 1)*(sizeof (int)));
+	    s->entries -= 1;
             return 0;
         }
     }

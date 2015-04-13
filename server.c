@@ -176,6 +176,9 @@ int main(void)
                 buf_free(&sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
+                /* remove from intset */
+                intset_del(dispset, ev.fd);
+                intset_del(clientset, ev.fd);
                 continue;
             }
             if (ev.events & POLLNVAL) {
@@ -189,6 +192,9 @@ int main(void)
                 buf_free(&sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
+                /* remove from intset */
+                intset_del(dispset, ev.fd);
+                intset_del(clientset, ev.fd);
                 continue;
             }
             if (ev.events & POLLIN) {
@@ -215,6 +221,9 @@ int main(void)
                     buf_free(&sbuf[ev.fd]);
                     /* delete fd from tpoll */
                     tpoll_del(p,ev.fd);
+                    /* remove from intset */
+                    intset_del(dispset, ev.fd);
+                    intset_del(clientset, ev.fd);
                     continue;
                 } else {
                     rbuf[ev.fd].tail += size;
