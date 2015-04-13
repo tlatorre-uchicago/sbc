@@ -27,7 +27,7 @@ int main(void)
     int dispfd;
 
     struct intset *dispset = intset_init(MAXFD);
-    struct intset *clientset = intset_init(MAXFD);
+    struct intset *sockset = intset_init(MAXFD);
 
     if ((sockfd = setup_listen_socket("3490",10)) < 0) {
         fprintf(stderr, "failed to setup listening socket on port 3490\n");
@@ -46,7 +46,7 @@ int main(void)
     /* connector's ip address */
     char s[INET6_ADDRSTRLEN];
     /* polling object */
-    struct tpoll *p = tpoll_create();
+    struct tpoll *p = tpoll_init();
     struct tpoll_event ev, evs[MAX_EVENTS];
     /* send/recv buffers */
     struct buffer sbuf[MAXFD];
@@ -94,7 +94,7 @@ int main(void)
                 "%F %T", timeinfo) == 0) {
                 fprintf(stderr, "strftime returned 0\n");
             } else {
-                printf("%s - %i client(s) connected\n", timestr, p->nfds-1);
+                printf("%s - %i client(s) connected\n", timestr, p->entries-2);
             }
             continue;
         }
@@ -136,7 +136,7 @@ int main(void)
                             close(new_fd);
                         } else {
                             if (ev.fd == sockfd) {
-                                if (intset_add(clientset,new_fd) != 0) {
+                                if (intset_add(sockset,new_fd) != 0) {
                                     fprintf(stderr,
                                             "failed to add fd to intset\n");
                                     tpoll_del(p, new_fd);
@@ -178,7 +178,7 @@ int main(void)
                 tpoll_del(p,ev.fd);
                 /* remove from intset */
                 intset_del(dispset, ev.fd);
-                intset_del(clientset, ev.fd);
+                intset_del(sockset, ev.fd);
                 continue;
             }
             if (ev.events & POLLNVAL) {
@@ -194,7 +194,7 @@ int main(void)
                 tpoll_del(p,ev.fd);
                 /* remove from intset */
                 intset_del(dispset, ev.fd);
-                intset_del(clientset, ev.fd);
+                intset_del(sockset, ev.fd);
                 continue;
             }
             if (ev.events & POLLIN) {
@@ -223,7 +223,7 @@ int main(void)
                     tpoll_del(p,ev.fd);
                     /* remove from intset */
                     intset_del(dispset, ev.fd);
-                    intset_del(clientset, ev.fd);
+                    intset_del(sockset, ev.fd);
                     continue;
                 } else {
                     rbuf[ev.fd].tail += size;

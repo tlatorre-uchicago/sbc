@@ -3,19 +3,18 @@
 #include <sys/poll.h>
 #include <stdint.h>
 
-#define MAX_FDS 100
-
 struct tpoll_event {
     int fd;
     uint32_t events;
 };
 
 struct tpoll {
-    int nfds;
-    struct pollfd ufds[MAX_FDS];
+    unsigned int entries;
+    unsigned int size;
+    struct pollfd *ufds;
 };
 
-struct tpoll *tpoll_create();
+struct tpoll *tpoll_init();
 void tpoll_free(struct tpoll *p);
 int tpoll_modify(struct tpoll *p, int fd, uint32_t eventmask);
 int tpoll_modify_or(struct tpoll *p, int fd, uint32_t eventmask);
