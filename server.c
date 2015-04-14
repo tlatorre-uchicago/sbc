@@ -8,6 +8,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "utils.h"
 #include "tpoll.h"
 #include "buf.h"
@@ -28,6 +31,24 @@ void ctrlc_handler(int _) {
 /* maximum number of file descriptor events for poll() */
 #define MAX_EVENTS 100
 
+int set_nonblocking(int fd)
+{
+    /* set a socket to non-blocking mode.
+     * from www.kegel.com/dkftpbench/nonblocking.html */
+    int flags;
+
+    /* If they have O_NONBLOCK, use the POSIX way to do it */
+#if defined(O_NONBLOCK)
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+    /* otherwise, use the old way of doing it */
+    flags = 1;
+    return ioctl(fd, FIOBIO, &flags);
+#endif
+}
+
 int main(void)
 {
     signal(SIGINT, ctrlc_handler);
@@ -43,10 +64,14 @@ int main(void)
         exit(1);
     }
 
+    set_nonblocking(sockfd);
+
     if ((dispfd = setup_listen_socket("3491",10)) < 0) {
         fprintf(stderr, "failed to setup listening socket on port 3491\n");
         exit(1);
     }
+
+    set_nonblocking(dispfd);
 
     /* connector's address info */
     struct sockaddr_storage their_addr;
@@ -62,14 +87,14 @@ int main(void)
     struct buffer rbuf[MAXFD];
     /* temporary buffer */
     char tmpbuf[BUFSIZE*2];
-    int i, nfds;
     /* time pointer for status */
     time_t t;
     struct tm *timeinfo;
     char timestr[256];
     /* timespec for printing info every 10 seconds */
     struct timespec time_last, time_now;
-    int size;
+
+    int i, nfds, bytes;
 
     clock_gettime(CLOCK_MONOTONIC, &time_now);
     time_last = time_now;
@@ -115,62 +140,59 @@ int main(void)
             ev = evs[i];
 
             if (ev.fd == sockfd || ev.fd == dispfd) {
-                if (ev.events & POLLIN) {
-                    /* client connected */
-                    fprintf(stderr, "client connected\n");
+                /* client connected */
+                fprintf(stderr, "client connected\n");
 
-                    socklen_t sin_size = sizeof their_addr;
+                socklen_t sin_size = sizeof their_addr;
 
-                    new_fd = accept(ev.fd, (struct sockaddr *)&their_addr,
-                                    &sin_size);
-                    if (new_fd == -1) {
-                        perror("accept");
+                new_fd = accept(ev.fd, (struct sockaddr *)&their_addr,
+                                &sin_size);
+
+                set_nonblocking(new_fd);
+
+                if (new_fd == -1) {
+                    perror("accept");
+                    continue;
+                }
+
+                inet_ntop(their_addr.ss_family,
+                    get_in_addr((struct sockaddr *)&their_addr),
+                    s, sizeof s);
+                printf("server: got connection from %s\n", s);
+
+                if (tpoll_add(p, new_fd, POLLIN)) {
+                    fprintf(stderr, "tpoll_add() failed\n");
+                    close(new_fd);
+                    continue;
+                }
+
+                if (new_fd > MAXFD-1) {
+                    fprintf(stderr, "fd is > MAXFD\n");
+                    tpoll_del(p, new_fd);
+                    close(new_fd);
+                    continue;
+                }
+
+                if (intset_add(sockset,new_fd) != 0) {
+                    fprintf(stderr, "failed to add fd to intset\n");
+                    tpoll_del(p, new_fd);
+                    close(new_fd);
+                    continue;
+                }
+
+                /* create send/recv buffers */
+                buf_create(&rbuf[new_fd],BUFSIZE);
+                buf_create(&sbuf[new_fd],BUFSIZE);
+
+                if (ev.fd == dispfd) {
+                    if (intset_add(dispset,new_fd) != 0) {
+                        fprintf(stderr, "failed to add fd to intset\n");
+                        tpoll_del(p, new_fd);
+                        close(new_fd);
+                        buf_free(&rbuf[new_fd]);
+                        buf_free(&sbuf[new_fd]);
                         continue;
                     }
-
-                    inet_ntop(their_addr.ss_family,
-                        get_in_addr((struct sockaddr *)&their_addr),
-                        s, sizeof s);
-                    printf("server: got connection from %s\n", s);
-
-                        
-                    if (tpoll_add(p, new_fd, POLLIN)) {
-                        fprintf(stderr, "too many clients\n");
-                        close(new_fd);
-                    } else {
-                        /* successfully added */
-                        if (new_fd > MAXFD-1) {
-                            fprintf(stderr, "fd is > MAXFD\n");
-                            tpoll_del(p, new_fd);
-                            close(new_fd);
-                        } else {
-                            if (ev.fd == sockfd) {
-                                if (intset_add(sockset,new_fd) != 0) {
-                                    fprintf(stderr,
-                                            "failed to add fd to intset\n");
-                                    tpoll_del(p, new_fd);
-                                    close(new_fd);
-                                } else {
-                                    /* create send/recv buffers */
-                                    buf_create(&rbuf[new_fd],BUFSIZE);
-                                    buf_create(&sbuf[new_fd],BUFSIZE);
-                                }
-                            } else if (ev.fd == dispfd) {
-                                if (intset_add(dispset,new_fd) != 0) {
-                                    fprintf(stderr,
-                                            "failed to add fd to intset\n");
-                                    tpoll_del(p, new_fd);
-                                    close(new_fd);
-                                } else {
-                                    /* create send/recv buffers */
-                                    buf_create(&rbuf[new_fd],BUFSIZE);
-                                    buf_create(&sbuf[new_fd],BUFSIZE);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    fprintf(stderr, "Listening socket got %i event",ev.events);
                 }
                 continue;
             }
@@ -213,15 +235,15 @@ int main(void)
 #endif
                 /* todo: check free_space and flush() if needed */
                 buf_flush(&rbuf[ev.fd]);
-                size = recv(ev.fd, rbuf[ev.fd].tail, FREE_SPACE(rbuf[ev.fd]), 0);
+                bytes = recv(ev.fd, rbuf[ev.fd].tail, FREE_SPACE(rbuf[ev.fd]), 0);
 
-                if (size == -1) {
+                if (bytes == -1) {
                     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
                         /* no data */
                     } else {
                         perror("recv");
                     }
-                } else if (size == 0) {
+                } else if (bytes == 0) {
                     /* client disconnected */
                     printf("client disconnected\n");
                     close(ev.fd);
@@ -235,7 +257,7 @@ int main(void)
                     intset_del(sockset, ev.fd);
                     continue;
                 } else {
-                    rbuf[ev.fd].tail += size;
+                    rbuf[ev.fd].tail += bytes;
                 }
             }
             if (ev.events & POLLOUT) {
@@ -301,6 +323,12 @@ int main(void)
                 } /* for loop for dispatchers */
             }
         }
+    }
+
+    /* free remaining buffers */
+    for (i = 0; i < sockset->entries; i++) {
+        buf_free(&rbuf[sockset->values[i]]);
+        buf_free(&sbuf[sockset->values[i]]);
     }
 
     tpoll_free(p);
