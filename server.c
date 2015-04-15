@@ -83,8 +83,8 @@ int main(void)
     struct tpoll *p = tpoll_init();
     struct tpoll_event ev, evs[MAX_EVENTS];
     /* send/recv buffers */
-    struct buffer sbuf[MAXFD];
-    struct buffer rbuf[MAXFD];
+    struct buffer *sbuf[MAXFD];
+    struct buffer *rbuf[MAXFD];
     /* temporary buffer */
     char tmpbuf[BUFSIZE*2];
     /* time pointer for status */
@@ -181,16 +181,16 @@ int main(void)
                 }
 
                 /* create send/recv buffers */
-                buf_create(&rbuf[new_fd],BUFSIZE);
-                buf_create(&sbuf[new_fd],BUFSIZE);
+                rbuf[new_fd] = buf_init(BUFSIZE);
+                sbuf[new_fd] = buf_init(BUFSIZE);
 
                 if (ev.fd == dispfd) {
                     if (intset_add(dispset,new_fd) != 0) {
                         fprintf(stderr, "failed to add fd to intset\n");
                         tpoll_del(p, new_fd);
                         close(new_fd);
-                        buf_free(&rbuf[new_fd]);
-                        buf_free(&sbuf[new_fd]);
+                        buf_free(rbuf[new_fd]);
+                        buf_free(sbuf[new_fd]);
                         continue;
                     }
                 }
@@ -203,8 +203,8 @@ int main(void)
                 /* close socket */
                 close(ev.fd);
                 /* free buffers */
-                buf_free(&rbuf[ev.fd]);
-                buf_free(&sbuf[ev.fd]);
+                buf_free(rbuf[ev.fd]);
+                buf_free(sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
                 /* remove from intset */
@@ -219,8 +219,8 @@ int main(void)
                  * see stackoverflow.com/q/24791625 */
 
                 /* free buffers */
-                buf_free(&rbuf[ev.fd]);
-                buf_free(&sbuf[ev.fd]);
+                buf_free(rbuf[ev.fd]);
+                buf_free(sbuf[ev.fd]);
                 /* delete fd from tpoll */
                 tpoll_del(p,ev.fd);
                 /* remove from intset */
@@ -233,9 +233,8 @@ int main(void)
 #ifdef DEBUG
                 printf("recv from %i\n",ev.fd);
 #endif
-                /* todo: check free_space and flush() if needed */
-                buf_flush(&rbuf[ev.fd]);
-                bytes = recv(ev.fd, rbuf[ev.fd].tail, FREE_SPACE(rbuf[ev.fd]), 0);
+                /* todo: how many bytes to receive ? */
+                bytes = recv(ev.fd, tmpbuf, 100, 0);
 
                 if (bytes == -1) {
                     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
@@ -248,8 +247,8 @@ int main(void)
                     printf("client disconnected\n");
                     close(ev.fd);
                     /* free buffers */
-                    buf_free(&rbuf[ev.fd]);
-                    buf_free(&sbuf[ev.fd]);
+                    buf_free(rbuf[ev.fd]);
+                    buf_free(sbuf[ev.fd]);
                     /* delete fd from tpoll */
                     tpoll_del(p,ev.fd);
                     /* remove from intset */
@@ -257,33 +256,33 @@ int main(void)
                     intset_del(sockset, ev.fd);
                     continue;
                 } else {
-                    rbuf[ev.fd].tail += bytes;
+                    buf_write(rbuf[ev.fd], tmpbuf, bytes);
                 }
             }
             if (ev.events & POLLOUT) {
-                if (BYTES(sbuf[ev.fd]) > 0) {
+                if (BUF_LEN(sbuf[ev.fd]) > 0) {
                     int sent;
-                    sent = send(ev.fd, sbuf[ev.fd].head, BYTES(sbuf[ev.fd]), 0);
+                    sent = send(ev.fd, sbuf[ev.fd]->head, BUF_LEN(sbuf[ev.fd]), 0);
 
                     if (sent == -1) {
                         perror("send");
                     } else {
-                        sbuf[ev.fd].head += sent;
+                        sbuf[ev.fd]->head += sent;
                     }
                 }
 
-                if (BYTES(sbuf[ev.fd]) == 0) {
+                if (BUF_LEN(sbuf[ev.fd]) == 0) {
                     /* no more data to send */
                     tpoll_modify_and(p, ev.fd, ~POLLOUT);
                     /* reset head and tail pointers to beginning
                      * of buffer */
-                    sbuf[ev.fd].head = sbuf[ev.fd].tail = sbuf[ev.fd].buf;
+                    sbuf[ev.fd]->head = sbuf[ev.fd]->tail = sbuf[ev.fd]->buf;
                 }
             }
             /* basic I/O done, now check for messages */
             if (ev.events & POLLIN) {
                 /* check for data */
-                int n = buf_read(&rbuf[ev.fd],tmpbuf,BYTES(rbuf[ev.fd]));
+                int n = buf_read(rbuf[ev.fd],tmpbuf,BUF_LEN(rbuf[ev.fd]));
                 if (n < 0) {
                     fprintf(stderr,"buf_read failed\n");
                 }
@@ -301,7 +300,7 @@ int main(void)
                 int j;
                 for (j = 0; j < dispset->entries; j++) {
                     int fd = dispset->values[j];
-                    if (buf_write(&sbuf[fd],printbuf,strlen(printbuf)) < 0) {
+                    if (buf_write(sbuf[fd],printbuf,strlen(printbuf)) < 0) {
                         socklen_t sin_size = sizeof their_addr;
 
                         if (getpeername(ev.fd, (struct sockaddr *)&their_addr,
@@ -327,8 +326,8 @@ int main(void)
 
     /* free remaining buffers */
     for (i = 0; i < sockset->entries; i++) {
-        buf_free(&rbuf[sockset->values[i]]);
-        buf_free(&sbuf[sockset->values[i]]);
+        buf_free(rbuf[sockset->values[i]]);
+        buf_free(sbuf[sockset->values[i]]);
     }
 
     tpoll_free(p);
