@@ -53,6 +53,9 @@ int main(void)
 {
     signal(SIGINT, ctrlc_handler);
 
+    /* prevent SIGPIPE from crashing the program */
+    signal(SIGPIPE, SIG_IGN);
+
     int sockfd;
     int dispfd;
 
