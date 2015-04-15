@@ -40,7 +40,7 @@ int buf_write(struct buffer *b, char *src, size_t n)
     /* write `n` bytes to the buffer from `src`. If there isn't enough space,
      * return -1. If there isn't enough bytes at the end of the buffer, move
      * the buffer back to the beginning */
-    if (b->size < n) return -1;
+    if ((b->size - BUF_LEN(b)) < n) return -1;
 
     if (BUF_FREE_SPACE(b) < n) {
         /* there isn't enough space at the end of the buffer.

@@ -233,15 +233,15 @@ int main(void)
 #ifdef DEBUG
                 printf("recv from %i\n",ev.fd);
 #endif
-                /* todo: how many bytes to receive ? */
-                bytes = recv(ev.fd, tmpbuf, 100, 0);
+                bytes = recv(ev.fd, tmpbuf, sizeof tmpbuf, 0);
 
-                if (bytes == -1) {
-                    if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                        /* no data */
-                    } else {
-                        perror("recv");
+                if (bytes > 0) {
+                    /* success! */
+                    if (buf_write(rbuf[ev.fd], tmpbuf, bytes)) {
+                        fprintf(stderr, "ERROR: read buffer overflow!\n");
                     }
+                } else if (bytes == -1) {
+                    perror("recv");
                 } else if (bytes == 0) {
                     /* client disconnected */
                     printf("client disconnected\n");
@@ -255,8 +255,6 @@ int main(void)
                     intset_del(dispset, ev.fd);
                     intset_del(sockset, ev.fd);
                     continue;
-                } else {
-                    buf_write(rbuf[ev.fd], tmpbuf, bytes);
                 }
             }
             if (ev.events & POLLOUT) {
