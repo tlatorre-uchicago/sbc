@@ -9,14 +9,17 @@ buf.o: buf.c
 intset.o: intset.c
 	$(CC) $(CFLAGS) -c intset.c
 
+ptrset.o: ptrset.c
+	$(CC) $(CFLAGS) -c ptrset.c
+
 tpoll.o: tpoll.c
 	$(CC) $(CFLAGS) -c tpoll.c
 
 utils.o: utils.c
 	$(CC) $(CFLAGS) -c utils.c
 
-server: utils.o server.c tpoll.o buf.o intset.o
-	$(CC) $(CFLAGS) server.c utils.o tpoll.o buf.o intset.o -o server -lrt
+server: utils.o server.c tpoll.o buf.o ptrset.o
+	$(CC) $(CFLAGS) server.c utils.o tpoll.o buf.o ptrset.o -o server -lrt
 
 pack.o: pack.c
 	$(CC) $(CFLAGS) -c pack.c

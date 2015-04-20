@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/poll.h>
+#include <sys/epoll.h>
 #include <errno.h>
 #include <string.h>
 #include <time.h>
@@ -14,7 +14,7 @@
 #include "utils.h"
 #include "tpoll.h"
 #include "buf.h"
-#include "intset.h"
+#include "ptrset.h"
 
 static volatile int go = 1;
 
@@ -49,6 +49,42 @@ int set_nonblocking(int fd)
 #endif
 }
 
+typedef enum sock_type {
+    CLIENT,
+    CLIENT_LISTEN,
+    DISPATCH,
+    DISPATCH_LISTEN,
+    XL3_LISTEN,
+    XL3,
+    XL3_ORCA,
+} sock_type_t;
+
+struct sock {
+    int fd;
+    sock_type_t type;
+    int id;
+    struct buffer *rbuf;
+    struct buffer *sbuf;
+};
+
+struct sock *sock_init(int fd, sock_type_t type, int id)
+{
+    struct sock *s = malloc((sizeof (struct sock)));
+    s->fd = fd;
+    s->type = type;
+    s->id = id;
+    s->rbuf = buf_init(BUFSIZE);
+    s->sbuf = buf_init(BUFSIZE);
+    return s;
+}
+
+void sock_free(struct sock *s)
+{
+    buf_free(s->rbuf);
+    buf_free(s->sbuf);
+    free(s);
+}
+
 int main(void)
 {
     signal(SIGINT, ctrlc_handler);
@@ -58,9 +94,6 @@ int main(void)
 
     int sockfd;
     int dispfd;
-
-    struct intset *dispset = intset_init(MAXFD);
-    struct intset *sockset = intset_init(MAXFD);
 
     if ((sockfd = setup_listen_socket("3490",10)) < 0) {
         fprintf(stderr, "failed to setup listening socket on port 3490\n");
@@ -81,13 +114,10 @@ int main(void)
     /* file descriptor to new connection */
     int new_fd;
     /* connector's ip address */
-    char s[INET6_ADDRSTRLEN];
+    char ipaddr[INET6_ADDRSTRLEN];
     /* polling object */
-    struct tpoll *p = tpoll_init();
-    struct tpoll_event ev, evs[MAX_EVENTS];
-    /* send/recv buffers */
-    struct buffer *sbuf[MAXFD];
-    struct buffer *rbuf[MAXFD];
+    int epollfd, nfds;
+    struct epoll_event ev, events[MAX_EVENTS];
     /* temporary buffer */
     char tmpbuf[BUFSIZE*2];
     /* time pointer for status */
@@ -97,21 +127,44 @@ int main(void)
     /* timespec for printing info every 10 seconds */
     struct timespec time_last, time_now;
 
-    int i, nfds, bytes;
+    int i, bytes;
 
     clock_gettime(CLOCK_MONOTONIC, &time_now);
     time_last = time_now;
 
-    /* need to check return value here */
-    tpoll_add(p, sockfd, POLLIN);
-    tpoll_add(p, dispfd, POLLIN);
+    epollfd = epoll_create(10);
+    if (epollfd == -1) {
+        perror("epoll_create");
+        exit(1);
+    }
+
+    struct ptrset *dispset = ptrset_init();
+    struct ptrset *sockset = ptrset_init();
+
+    struct sock *s;
+
+    ev.events = EPOLLIN;
+    ev.data.ptr = sock_init(sockfd, CLIENT_LISTEN, 0);
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
+        perror("epoll_ctl: listen_sock");
+        exit(1);
+    }
+    ptrset_add(sockset, ev.data.ptr);
+
+    ev.events = EPOLLIN;
+    ev.data.ptr = sock_init(dispfd, DISPATCH_LISTEN, 0);
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, dispfd, &ev) == -1) {
+        perror("epoll_ctl: dispfd");
+        exit(1);
+    }
+    ptrset_add(sockset, ev.data.ptr);
 
     printf("waiting for connections...\n");
 
     while (go) {
 
-        /* timeout after 10 seconds */
-        nfds = tpoll_poll(p, evs, MAX_EVENTS, 1000);
+        /* timeout after 1 second */
+        nfds = epoll_wait(epollfd, events, MAX_EVENTS, 1000);
 
         clock_gettime(CLOCK_MONOTONIC, &time_now);
 
@@ -131,7 +184,7 @@ int main(void)
                 "%F %T", timeinfo) == 0) {
                 fprintf(stderr, "strftime returned 0\n");
             } else {
-                printf("%s - %i client(s) connected\n", timestr, p->entries-2);
+                printf("%s - %i client(s) connected\n", timestr, sockset->entries-2);
             }
             continue;
         }
@@ -140,15 +193,15 @@ int main(void)
         if (nfds == 0) continue;
 
         for (i = 0; i < nfds; i++) {
-            ev = evs[i];
+            s = (struct sock*)events[i].data.ptr;
 
-            if (ev.fd == sockfd || ev.fd == dispfd) {
+            if (s->type == CLIENT_LISTEN || s->type == DISPATCH_LISTEN) {
                 /* client connected */
                 fprintf(stderr, "client connected\n");
 
                 socklen_t sin_size = sizeof their_addr;
 
-                new_fd = accept(ev.fd, (struct sockaddr *)&their_addr,
+                new_fd = accept(s->fd, (struct sockaddr *)&their_addr,
                                 &sin_size);
 
                 set_nonblocking(new_fd);
@@ -160,87 +213,71 @@ int main(void)
 
                 inet_ntop(their_addr.ss_family,
                     get_in_addr((struct sockaddr *)&their_addr),
-                    s, sizeof s);
-                printf("server: got connection from %s\n", s);
+                    ipaddr, sizeof ipaddr);
+                printf("server: got connection from %s, fd=%d\n", ipaddr,new_fd);
 
-                if (tpoll_add(p, new_fd, POLLIN)) {
-                    fprintf(stderr, "tpoll_add() failed\n");
-                    close(new_fd);
-                    continue;
+                struct sock *new_sock;
+                if (s->type == CLIENT_LISTEN) {
+                    new_sock = sock_init(new_fd, CLIENT, 0);
+                } else if (s->type == DISPATCH_LISTEN) {
+                    new_sock = sock_init(new_fd, DISPATCH, 0);
                 }
 
-                if (new_fd > MAXFD-1) {
-                    fprintf(stderr, "fd is > MAXFD\n");
-                    tpoll_del(p, new_fd);
+                ev.events = EPOLLIN;
+                ev.data.ptr = new_sock;
+                if (epoll_ctl(epollfd, EPOLL_CTL_ADD, new_fd, &ev) == -1) {
+                    perror("epoll_ctl");
+                    sock_free(new_sock);
                     close(new_fd);
-                    continue;
                 }
 
-                if (intset_add(sockset,new_fd) != 0) {
-                    fprintf(stderr, "failed to add fd to intset\n");
-                    tpoll_del(p, new_fd);
-                    close(new_fd);
-                    continue;
-                }
-
-                /* create send/recv buffers */
-                rbuf[new_fd] = buf_init(BUFSIZE);
-                sbuf[new_fd] = buf_init(BUFSIZE);
-
-                if (ev.fd == dispfd) {
-                    if (intset_add(dispset,new_fd) != 0) {
-                        fprintf(stderr, "failed to add fd to intset\n");
-                        tpoll_del(p, new_fd);
-                        close(new_fd);
-                        buf_free(rbuf[new_fd]);
-                        buf_free(sbuf[new_fd]);
-                        continue;
-                    }
+                ptrset_add(sockset, ev.data.ptr);
+                if (s->type == DISPATCH_LISTEN) {
+                    ptrset_add(dispset, ev.data.ptr);
                 }
                 continue;
             }
 
             /* other sockets */
-            if ((ev.events & POLLERR) || (ev.events & POLLHUP)) {
-                fprintf(stderr,"received POLLERR/POLLHUP, closing socket\n");
-                /* close socket */
-                close(ev.fd);
+            if ((events[i].events & EPOLLERR) || \
+                (events[i].events & EPOLLHUP)) {
+                fprintf(stderr,"received EPOLLERR/EPOLLHUP, closing socket\n");
                 /* free buffers */
-                buf_free(rbuf[ev.fd]);
-                buf_free(sbuf[ev.fd]);
-                /* delete fd from tpoll */
-                tpoll_del(p,ev.fd);
-                /* remove from intset */
-                intset_del(dispset, ev.fd);
-                intset_del(sockset, ev.fd);
+                sock_free(s);
+                /* close socket */
+                close(s->fd);
+                /* delete from sets */
+                ptrset_del(sockset, ev.data.ptr);
+                ptrset_del(dispset, ev.data.ptr);
                 continue;
             }
-            if (ev.events & POLLNVAL) {
-                fprintf(stderr, "received POLLNVAL, deleting socket\n");
+            if (events[i].events & EPOLLHUP) {
+                fprintf(stderr, "received EINVAL, deleting socket\n");
                 /* shouldn't close socket, but need to remove it from
                  * pollfds.
                  * see stackoverflow.com/q/24791625 */
 
+                /* delete from epoll */
+                if (epoll_ctl(epollfd, EPOLL_CTL_DEL, s->fd, NULL) == -1) {
+                    perror("epoll_ctl: EPOLL_CTL_DEL");
+                }
                 /* free buffers */
-                buf_free(rbuf[ev.fd]);
-                buf_free(sbuf[ev.fd]);
-                /* delete fd from tpoll */
-                tpoll_del(p,ev.fd);
-                /* remove from intset */
-                intset_del(dispset, ev.fd);
-                intset_del(sockset, ev.fd);
+                sock_free(s);
+                /* delete from sets */
+                ptrset_del(sockset, ev.data.ptr);
+                ptrset_del(dispset, ev.data.ptr);
                 continue;
             }
-            if (ev.events & POLLIN) {
+            if (events[i].events & EPOLLIN) {
                 /* data ready from client */
-#ifdef DEBUG
-                printf("recv from %i\n",ev.fd);
-#endif
-                bytes = recv(ev.fd, tmpbuf, sizeof tmpbuf, 0);
+                printf("recv from %i\n",s->fd);
+                bytes = recv(s->fd, tmpbuf, sizeof tmpbuf, 0);
 
                 if (bytes > 0) {
                     /* success! */
-                    if (buf_write(rbuf[ev.fd], tmpbuf, bytes)) {
+                    if (buf_write(s->rbuf, tmpbuf, bytes)) {
+                        /* todo: need to do something here
+                         * disconnect? */
                         fprintf(stderr, "ERROR: read buffer overflow!\n");
                     }
                 } else if (bytes == -1) {
@@ -248,42 +285,47 @@ int main(void)
                 } else if (bytes == 0) {
                     /* client disconnected */
                     printf("client disconnected\n");
-                    close(ev.fd);
                     /* free buffers */
-                    buf_free(rbuf[ev.fd]);
-                    buf_free(sbuf[ev.fd]);
-                    /* delete fd from tpoll */
-                    tpoll_del(p,ev.fd);
-                    /* remove from intset */
-                    intset_del(dispset, ev.fd);
-                    intset_del(sockset, ev.fd);
+                    sock_free(s);
+                    /* close socket */
+                    close(s->fd);
+                    /* delete from sets */
+                    ptrset_del(sockset, ev.data.ptr);
+                    ptrset_del(dispset, ev.data.ptr);
                     continue;
                 }
             }
-            if (ev.events & POLLOUT) {
-                if (BUF_LEN(sbuf[ev.fd]) > 0) {
+            if (events[i].events & EPOLLOUT) {
+                if (BUF_LEN(s->sbuf) > 0) {
                     int sent;
-                    sent = send(ev.fd, sbuf[ev.fd]->head, BUF_LEN(sbuf[ev.fd]), 0);
+                    sent = send(s->fd, s->sbuf->head, BUF_LEN(s->sbuf), 0);
 
                     if (sent == -1) {
                         perror("send");
                     } else {
-                        sbuf[ev.fd]->head += sent;
+                        s->sbuf->head += sent;
                     }
                 }
 
-                if (BUF_LEN(sbuf[ev.fd]) == 0) {
+                if (BUF_LEN(s->sbuf) == 0) {
                     /* no more data to send */
-                    tpoll_modify_and(p, ev.fd, ~POLLOUT);
+                    ev.events = EPOLLIN;
+                    ev.data.ptr = s;
+                    if (epoll_ctl(epollfd, EPOLL_CTL_MOD, s->fd, &ev) == -1) {
+                        perror("epoll_ctl: mod");
+                    }
                     /* reset head and tail pointers to beginning
                      * of buffer */
-                    sbuf[ev.fd]->head = sbuf[ev.fd]->tail = sbuf[ev.fd]->buf;
+                    s->sbuf->head = s->sbuf->tail = s->sbuf->buf;
                 }
             }
-            /* basic I/O done, now check for messages */
-            if (ev.events & POLLIN) {
+            /* basic I/O done, now check for messages.
+             * note: you have to consume as much of the recv buffer here as
+             * possible because otherwise if there are no POLL events for this
+             * fd, the control flow will never come back here. */
+            if (events[i].events & EPOLLIN) {
                 /* check for data */
-                int n = buf_read(rbuf[ev.fd],tmpbuf,BUF_LEN(rbuf[ev.fd]));
+                int n = buf_read(s->rbuf,tmpbuf,BUF_LEN(s->rbuf));
                 if (n < 0) {
                     fprintf(stderr,"buf_read failed\n");
                 }
@@ -300,25 +342,30 @@ int main(void)
                 /* relay to all dispatchers */
                 int j;
                 for (j = 0; j < dispset->entries; j++) {
-                    int fd = dispset->values[j];
-                    if (buf_write(sbuf[fd],printbuf,strlen(printbuf)) < 0) {
+                    s = (struct sock *)dispset->values[j];
+                    if (buf_write(s->sbuf,printbuf,strlen(printbuf)) < 0) {
                         socklen_t sin_size = sizeof their_addr;
 
-                        if (getpeername(ev.fd, (struct sockaddr *)&their_addr,
+                        if (getpeername(s->fd, (struct sockaddr *)&their_addr,
                                         &sin_size)) {
                             perror("getpeername");
-                            s[0] = '?';
-                            s[1] = '\0';
+                            ipaddr[0] = '?';
+                            ipaddr[1] = '\0';
                         } else {
                             /* get ip address */
                             inet_ntop(their_addr.ss_family,
                                 get_in_addr((struct sockaddr *)&their_addr),
-                                s, sizeof s);
+                                ipaddr, sizeof ipaddr);
                         }
-                        fprintf(stderr, "ERROR: output buffer full for %s\n",s);
+                        fprintf(stderr, "ERROR: output buffer full for %s\n",ipaddr);
                     } else {
                         /* need to send data */
-                        tpoll_modify_or(p, fd, POLLOUT);
+                        ev.events = EPOLLIN | EPOLLOUT;
+                        ev.data.ptr = s;
+                        fprintf(stderr, "s->fd = %d\n",s->fd);
+                        if (epoll_ctl(epollfd, EPOLL_CTL_MOD, s->fd, &ev) == -1) {
+                            perror("epoll_ctl: dispatch send");
+                        }
                     }
                 } /* for loop for dispatchers */
             }
@@ -327,13 +374,12 @@ int main(void)
 
     /* free remaining buffers */
     for (i = 0; i < sockset->entries; i++) {
-        buf_free(rbuf[sockset->values[i]]);
-        buf_free(sbuf[sockset->values[i]]);
+        s = (struct sock*)sockset->values[i];
+        sock_free(s);
     }
 
-    tpoll_free(p);
-    intset_free(dispset);
-    intset_free(sockset);
+    ptrset_free(dispset);
+    ptrset_free(sockset);
 
     return 0;
 }
