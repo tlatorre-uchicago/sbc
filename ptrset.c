@@ -31,6 +31,14 @@ int ptrset_add(struct ptrset *s, void *value)
     return 0;
 }
 
+void *ptrset_pop(struct ptrset *s) {
+    if (s->entries > 0) {
+        return s->values[--s->entries];
+    } else {
+        return NULL;
+    }
+}
+
 int ptrset_in(struct ptrset *s, void *value)
 {
     /* returns 1 if value is in the ptrset, otherwise zero. */

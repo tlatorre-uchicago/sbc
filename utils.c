@@ -9,6 +9,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
 
 void escape_string(char *dest, char *src)
 {
@@ -130,3 +132,22 @@ int setup_listen_socket(char *port, int backlog)
 
     return sockfd;
 }
+
+int set_nonblocking(int fd)
+{
+    /* set a socket to non-blocking mode.
+     * from www.kegel.com/dkftpbench/nonblocking.html */
+    int flags;
+
+    /* If they have O_NONBLOCK, use the POSIX way to do it */
+#if defined(O_NONBLOCK)
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+    /* otherwise, use the old way of doing it */
+    flags = 1;
+    return ioctl(fd, FIOBIO, &flags);
+#endif
+}
+

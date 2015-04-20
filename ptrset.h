@@ -30,6 +30,7 @@ struct ptrset {
 struct ptrset *ptrset_init();
 void ptrset_free(struct ptrset *s);
 int ptrset_add(struct ptrset *s, void *value);
+void *ptrset_pop(struct ptrset *s);
 int ptrset_in(struct ptrset *s, void *value);
 int ptrset_del(struct ptrset *s, void *value);
 
