@@ -70,8 +70,6 @@ int sock_listen(int port, int backlog, int type, int id)
     struct epoll_event ev;
     sprintf(node, "%d", port);
 
-    printf("listen on port %s\n", node);
-
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;

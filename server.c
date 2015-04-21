@@ -26,8 +26,65 @@ void ctrlc_handler(int _) {
 }
 
 /* XL3's connect on port XL3_PORT + crate */
-#define XL3_PORT 44530
+#define XL3_PORT 44630
 #define XL3_ORCA_PORT 54630
+
+void process_xl3_data(struct sock *s)
+{
+    /* temporary buffer to hold XL3 packets */
+    static char tmp[XL3_PACKET_SIZE];
+
+    /* process all of the data in the read buffer */
+    int n;
+    while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
+        n = buf_read(s->rbuf,tmp,XL3_PACKET_SIZE);
+        if (n < 0) {
+            fprintf(stderr, "buf_read failed\n");
+            return;
+        }
+        XL3Packet *p = (XL3Packet *)tmp;
+
+        /* packet type is a single byte so no need to swap
+         * bytes */
+        switch (p->header.packetType) {
+            case PING_ID:
+                /* ping -> pong */
+                p->header.packetType = PONG_ID;
+                sock_write(s, tmp, XL3_PACKET_SIZE);
+                break;
+            case MESSAGE_ID:
+                /* print message */
+                printf("XL3 message: %s", p->payload);
+                break;
+            case MEGA_BUNDLE_ID:
+                /* dispatch */
+                relay_to_dispatchers(tmp, XL3_PACKET_SIZE, MEGA_BUNDLE);
+                break;
+            default:
+                /* forward -> sender */
+                if (!s->cmd) {
+                    fprintf(stderr, "WARNING: received reply packet from XL3, "
+                                    "but no request active.\n");
+                    continue;
+                }
+                /* we are waiting for a reply */
+                if (p->header.packetType != s->cmd->msg.header.packetType) {
+                    fprintf(stderr, "WARNING: received reply packet from XL3, "
+                                    "but header doesn't match request.\n");
+                    continue;
+                }
+                sock_write(s->cmd->sender, tmp, XL3_PACKET_SIZE);
+                /* free the current request */
+                free(s->cmd);
+                /* pop the next request off the queue */
+                s->cmd = (struct xl3_cmd *)ptrset_pop(s->cmdqueue);
+                /* if there are no more requests, pop() returns NULL */
+                if (s->cmd) {
+                    sock_write(s, (char *)&(s->cmd->msg), XL3_PACKET_SIZE);
+                }
+        } /* switch */
+    } /* while */
+}
 
 int main(void)
 {
@@ -36,15 +93,9 @@ int main(void)
     /* prevent SIGPIPE from crashing the program */
     signal(SIGPIPE, SIG_IGN);
 
-    /* connector's address info */
-    struct sockaddr_storage their_addr;
-    /* file descriptor to new connection */
-    int new_fd;
-    /* connector's ip address */
-    char ipaddr[INET6_ADDRSTRLEN];
     /* polling object */
     int nfds;
-    struct epoll_event ev, events[MAX_EVENTS];
+    struct epoll_event events[MAX_EVENTS];
     /* temporary buffer */
     char *tmpbuf = malloc(BUFSIZE*2);
     char *printbuf = malloc(BUFSIZE*2);
@@ -56,7 +107,7 @@ int main(void)
     struct timespec time_last, time_now;
     struct sock *s;
 
-    int i, j, k, n, bytes;
+    int i, n;
 
     clock_gettime(CLOCK_MONOTONIC, &time_now);
     time_last = time_now;
@@ -130,64 +181,7 @@ int main(void)
             if (events[i].events & EPOLLIN) {
                 switch (s->type) {
                     case XL3:
-                        while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
-                            n = buf_read(s->rbuf,tmpbuf,XL3_PACKET_SIZE);
-                            if (n < 0) {
-                                fprintf(stderr, "buf_read failed\n");
-                            }
-                            XL3Packet *p = (XL3Packet *)tmpbuf;
-
-                            /* packet type is a single byte so no need to swap
-                             * bytes */
-                            switch (p->header.packetType) {
-                                case PING_ID:
-                                    /* ping -> pong */
-                                    p->header.packetType = PONG_ID;
-                                    /* sock_write(s, tmpbuf, XL3_PACKET_SIZE) */
-                                    if (buf_write(s->sbuf,tmpbuf,XL3_PACKET_SIZE) == -1) {
-                                        fprintf(stderr, "ERROR: failed to write PONG packet\n");
-                                    }
-                                    ev.events = EPOLLIN | EPOLLOUT;
-                                    ev.data.ptr = s;
-                                    if (epoll_ctl(epollfd, EPOLL_CTL_MOD, s->fd, &ev) == -1) {
-                                        perror("epoll_ctl");
-                                    }
-                                    break;
-                                case MESSAGE_ID:
-                                    /* print message */
-                                    printf("XL3 message: %s", p->payload);
-                                    break;
-                                case MEGA_BUNDLE_ID:
-                                    /* dispatch */
-                                    relay_to_dispatchers(tmpbuf, XL3_PACKET_SIZE, MEGA_BUNDLE);
-                                    break;
-                                default:
-                                    /* forward -> sender */
-                                    if (s->cmd) {
-                                        /* we are waiting for a reply */
-                                        if (p->header.packetType == s->cmd->msg.header.packetType) {
-                                            struct sock *reply_sock = s->cmd->sender;
-                                            if (buf_write(reply_sock->sbuf, tmpbuf, XL3_PACKET_SIZE) == -1) {
-                                                fprintf(stderr, "ERROR: send buffer full!\n");
-                                            } else {
-                                                free(s->cmd);
-                                                s->cmd = (struct xl3_cmd *)ptrset_pop(s->cmdqueue);
-                                                if (s->cmd) {
-                                                    if (buf_write(s->sbuf, (char *)&(s->cmd->msg), XL3_PACKET_SIZE) < 0) {
-                                                        fprintf(stderr, "ERROR: can't send XL3 packet\n");
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            fprintf(stderr, "WARNING: received packet %x from XL3, was expecting %x\n",
-                                                    p->header.packetType,s->cmd->msg.header.packetType);
-                                        }
-                                    } else {
-                                        fprintf(stderr, "WARNING: received %x packet from XL3, don't know what to do\n",
-                                                p->header.packetType);
-                                    }
-                            }
-                        } /* while */
+                        process_xl3_data(s);
                         break;
                     case CLIENT:
                         /* check for data */
