@@ -31,7 +31,7 @@
 **
 **  (16-bit unsigned length is automatically prepended to strings)
 */ 
-unsigned int pack(unsigned char *buf, char *format, ...)
+unsigned int pack(unsigned char *buf, char *format, ...);
 /*
 ** unpack() -- unpack data dictated by the format string into the buffer
 **
@@ -46,4 +46,4 @@ unsigned int pack(unsigned char *buf, char *format, ...)
 **  (string is extracted based on its stored length, but 's' can be
 **  prepended with a max length)
 */
-void unpack(unsigned char *buf, char *format, ...)
+void unpack(unsigned char *buf, char *format, ...);
