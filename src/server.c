@@ -171,13 +171,13 @@ int main(void)
     struct tm *timeinfo;
     char timestr[256];
     /* timespec for printing info every 10 seconds */
-    struct timespec time_last, time_now;
+    struct timespec time_last_info, time_last_check, time_now;
     struct sock *s;
 
     int i, n;
 
     clock_gettime(CLOCK_MONOTONIC, &time_now);
-    time_last = time_now;
+    time_last_info = time_last_check = time_now;
 
     if (global_setup() == -1) {
         exit(1);
@@ -212,16 +212,15 @@ int main(void)
 
         clock_gettime(CLOCK_MONOTONIC, &time_now);
 
-        int diff = time_now.tv_sec - time_last.tv_sec;
-        time_last = time_now;
-        t = time(NULL);
-        timeinfo = localtime(&t);
-
-        if (diff > 1) {
+        if (time_now.tv_sec - time_last_check.tv_sec > 1) {
+            time_last_check = time_now;
             check_req_times(time_now);
         }
 
-        if (diff > 10) {
+        if (time_now.tv_sec - time_last_info.tv_sec > 10) {
+            time_last_info = time_now;
+            t = time(NULL);
+            timeinfo = localtime(&t);
             /* print out status */
             if (timeinfo == NULL) {
                 perror("localtime");
