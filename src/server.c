@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "utils.h"
-#include "tpoll.h"
 #include "buf.h"
 #include "ptrset.h"
 #include "XL3PacketTypes.h"
