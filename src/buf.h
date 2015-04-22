@@ -16,7 +16,7 @@
  *     if (bytes_received > 0) {
  *         buf_write(b, msg, bytes_received);
  *     }
- *     if (buv_len(b) > 100) break;
+ *     if (buf_len(b) > 100) break;
  * }
  *
  */
