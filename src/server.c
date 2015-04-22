@@ -16,7 +16,6 @@
 #include "buf.h"
 #include "ptrset.h"
 #include "XL3PacketTypes.h"
-#include "pack.h"
 #include "sock.h"
 
 static volatile int go = 1;

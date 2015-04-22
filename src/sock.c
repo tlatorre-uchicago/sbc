@@ -9,7 +9,6 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include "sock.h"
-#include "pack.h"
 #include "ptrset.h"
 #include "utils.h"
 
