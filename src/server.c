@@ -55,7 +55,7 @@ void check_req_times(struct timespec now)
                             "sending new request!\n");
             free(s->req);
             /* pop the next request off the queue */
-            s->req = (struct XL3_request *)ptrset_pop(s->req_queue);
+            s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
             /* if there are no more requests, pop() returns NULL */
             if (s->req) {
                 sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
@@ -146,7 +146,7 @@ void process_xl3_data(struct sock *s)
                 /* free the current request */
                 free(s->req);
                 /* pop the next request off the queue */
-                s->req = (struct XL3_request *)ptrset_pop(s->req_queue);
+                s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
                 /* if there are no more requests, pop() returns NULL */
                 if (s->req) {
                     sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);

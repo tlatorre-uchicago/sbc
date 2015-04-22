@@ -52,6 +52,19 @@ void *ptrset_pop(struct ptrset *s) {
     }
 }
 
+void *ptrset_popleft(struct ptrset *s) {
+    /* returns the first pointer added to the set, or NULL if the
+     * set is empty. */
+    if (s->entries > 0) {
+        void *p = s->values[0];
+        memmove(s->values,s->values+1, (s->entries - 1)*(sizeof (void *)));
+        s->entries -= 1;
+        return p;
+    } else {
+        return NULL;
+    }
+}
+
 int ptrset_in(struct ptrset *s, void *value)
 {
     /* returns 1 if value is in the ptrset, otherwise zero. */

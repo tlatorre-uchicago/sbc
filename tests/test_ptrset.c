@@ -22,6 +22,14 @@ int main()
     while ((ptr = ptrset_pop(s)));
     assert(s->entries == 0);
 
+    assert(ptrset_add(s,a) == 0);
+    assert(ptrset_add(s,b) == 0);
+    assert(ptrset_popleft(s) == a);
+    assert(s->entries == 1);
+    assert(ptrset_popleft(s) == b);
+    assert(s->entries == 0);
+    assert(ptrset_popleft(s) == NULL);
+
     /* now we just malloc a bunch of stuff and make sure it gets free'd */
     int i;
     for (i = 0; i < 1000; i++) {
