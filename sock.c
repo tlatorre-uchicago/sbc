@@ -40,8 +40,8 @@ struct sock *sock_init(int fd, sock_type_t type, int id)
     s->id = id;
     s->rbuf = buf_init(BUFSIZE);
     s->sbuf = buf_init(BUFSIZE);
-    s->cmdqueue = ptrset_init();
-    s->cmd = NULL;
+    s->req_queue = ptrset_init();
+    s->req = NULL;
     ptrset_add(sockset, s);
     return s;
 }
@@ -50,6 +50,8 @@ void sock_close(struct sock *s)
 {
     /* close the file descriptor */
     close(s->fd);
+    /* delete the socket from epoll */
+    epoll_ctl(epollfd, EPOLL_CTL_DEL, s->fd, 0);
     /* delete the socket from the global list */
     ptrset_del(sockset, s);
     /* free the sock struct */
@@ -171,7 +173,7 @@ void sock_accept(struct sock *s)
     }
 }
     
-void sock_io(struct sock *s, uint32_t event)
+int sock_io(struct sock *s, uint32_t event)
 {
     static char tmp[READSIZE];
     struct epoll_event ev;
@@ -179,17 +181,17 @@ void sock_io(struct sock *s, uint32_t event)
     if (event & EPOLLERR) {
         fprintf(stderr, "received EPOLLERR, closing socket\n");
         sock_close(s);
-        return;
+        return -1;
     }
     if (event & EPOLLHUP) {
         fprintf(stderr, "received EPOLLHUP, closing socket\n");
         sock_close(s);
-        return;
+        return -1;
     }
 
     if (s->type == CLIENT_LISTEN || s->type == DISPATCH_LISTEN || s->type == XL3_LISTEN || s->type == XL3_ORCA_LISTEN) {
         sock_accept(s);
-        return;
+        return 0;
     }
 
     if (event & EPOLLIN) {
@@ -199,13 +201,13 @@ void sock_io(struct sock *s, uint32_t event)
             perror("recv");
         } else if (bytes == 0) {
             sock_close(s);
-            return;
+            return -1;
         } else {
             /* success! */
             if (buf_write(s->rbuf, tmp, bytes) == -1) {
                 fprintf(stderr, "ERROR: read buffer overflow, closing socket!\n");
                 sock_close(s);
-                return;
+                return -1;
             }
         }
     }
@@ -231,6 +233,7 @@ void sock_io(struct sock *s, uint32_t event)
             s->sbuf->head = s->sbuf->tail = s->sbuf->buf;
         }
     }
+    return 0;
 }
 
 void sock_write(struct sock *s, char *buf, int size)
@@ -253,7 +256,8 @@ void sock_free(struct sock *s)
 {
     buf_free(s->rbuf);
     buf_free(s->sbuf);
-    ptrset_free(s->cmdqueue);
+    ptrset_free_all(s->req_queue);
+    if (s->req) free(s->req);
     free(s);
 }
 

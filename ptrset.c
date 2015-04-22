@@ -18,6 +18,15 @@ void ptrset_free(struct ptrset *s)
     free(s);
 }
 
+void ptrset_free_all(struct ptrset *s)
+{
+    int i;
+    for (i = 0; i < s->entries; i++) {
+        free(s->values[i]);
+    }
+    ptrset_free(s);
+}
+
 int ptrset_add(struct ptrset *s, void *value)
 {
     /* add a pointer to the set. */

@@ -26,8 +26,53 @@ void ctrlc_handler(int _) {
 }
 
 /* XL3's connect on port XL3_PORT + crate */
-#define XL3_PORT 44630
+#define XL3_PORT 45630
 #define XL3_ORCA_PORT 54630
+
+struct sock *find_xl3_socket(int id)
+{
+    struct sock *s;
+    int i;
+    for (i = 0; i < sockset->entries; i++) {
+        s = (struct sock *)sockset->values[i];
+        if (s->type == XL3 && s->id == id) return s;
+    }
+    return NULL;
+}
+
+void process_xl3_orca_socket(struct sock *s)
+{
+    static char tmp[XL3_PACKET_SIZE];
+
+    int n;
+    while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
+        fprintf(stderr, "sending XL3 packet\n");
+        n = buf_read(s->rbuf, tmp, XL3_PACKET_SIZE);
+        if (n < 0) {
+            fprintf(stderr, "ERROR: process_xl3_orca_socket(), failed to read "
+                            "recv buffer.\n");
+            return;
+        }
+
+        struct XL3_request *r = malloc(sizeof (struct XL3_request));
+        memcpy((char *)&r->packet, tmp, XL3_PACKET_SIZE);
+        r->sender = s;
+
+        struct sock *xl3 = find_xl3_socket(s->id);
+
+        if (!xl3) {
+            fprintf(stderr, "ERROR: request -> XL3 %d dropped.\n", s->id);
+            return;
+        }
+
+        if (xl3->req) {
+            ptrset_add(xl3->req_queue, r);
+        } else {
+            xl3->req = r;
+            sock_write(xl3, (char *)&(r->packet), XL3_PACKET_SIZE);
+        }
+    }
+}
 
 void process_xl3_data(struct sock *s)
 {
@@ -62,25 +107,25 @@ void process_xl3_data(struct sock *s)
                 break;
             default:
                 /* forward -> sender */
-                if (!s->cmd) {
+                if (!s->req) {
                     fprintf(stderr, "WARNING: received reply packet from XL3, "
                                     "but no request active.\n");
                     continue;
                 }
                 /* we are waiting for a reply */
-                if (p->header.packetType != s->cmd->msg.header.packetType) {
+                if (p->header.packetType != s->req->packet.header.packetType) {
                     fprintf(stderr, "WARNING: received reply packet from XL3, "
                                     "but header doesn't match request.\n");
                     continue;
                 }
-                sock_write(s->cmd->sender, tmp, XL3_PACKET_SIZE);
+                sock_write(s->req->sender, tmp, XL3_PACKET_SIZE);
                 /* free the current request */
-                free(s->cmd);
+                free(s->req);
                 /* pop the next request off the queue */
-                s->cmd = (struct xl3_cmd *)ptrset_pop(s->cmdqueue);
+                s->req = (struct XL3_request *)ptrset_pop(s->req_queue);
                 /* if there are no more requests, pop() returns NULL */
-                if (s->cmd) {
-                    sock_write(s, (char *)&(s->cmd->msg), XL3_PACKET_SIZE);
+                if (s->req) {
+                    sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
                 }
         } /* switch */
     } /* while */
@@ -170,9 +215,9 @@ int main(void)
         if (nfds == 0) continue;
 
         for (i = 0; i < nfds; i++) {
-            sock_io((struct sock*)events[i].data.ptr, events[i].events);
+            s = (struct sock *)events[i].data.ptr;
 
-             s = (struct sock *)events[i].data.ptr;
+            if (sock_io(s, events[i].events) == -1) continue;
 
             /* basic I/O done, now check for messages.
              * note: you have to consume as much of the recv buffer here as
@@ -182,6 +227,9 @@ int main(void)
                 switch (s->type) {
                     case XL3:
                         process_xl3_data(s);
+                        break;
+                    case XL3_ORCA:
+                        process_xl3_orca_socket(s);
                         break;
                     case CLIENT:
                         /* check for data */
@@ -210,8 +258,7 @@ int main(void)
 
     /* free remaining buffers */
     for (i = 0; i < sockset->entries; i++) {
-        s = (struct sock*)sockset->values[i];
-        sock_free(s);
+        sock_free(sockset->values[i]);
     }
 
     global_free();

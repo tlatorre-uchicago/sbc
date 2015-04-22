@@ -27,8 +27,8 @@ typedef enum packet_type {
     MTCD_BUNDLE = 2,
 } packet_type_t;
 
-struct xl3_cmd {
-    XL3Packet msg;
+struct XL3_request {
+    XL3Packet packet;
     struct sock *sender;
     /* time? */
 };
@@ -40,9 +40,9 @@ struct sock {
     struct buffer *rbuf;
     struct buffer *sbuf;
     /* queue for commands -> XL3 */
-    struct ptrset *cmdqueue;
+    struct ptrset *req_queue;
     /* last sent command */
-    struct xl3_cmd *cmd;
+    struct XL3_request *req;
 };
 
 int epollfd;
@@ -54,7 +54,7 @@ struct sock *sock_init(int fd, sock_type_t type, int id);
 void sock_close(struct sock *s);
 int sock_listen(int port, int backlog, int type, int id);
 void sock_accept(struct sock *s);
-void sock_io(struct sock *s, uint32_t event);
+int sock_io(struct sock *s, uint32_t event);
 void sock_write(struct sock *s, char *buf, int size);
 void sock_free(struct sock *s);
 void relay_to_dispatchers(char *msg, int size, int type);
