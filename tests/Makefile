@@ -9,5 +9,9 @@ test_ptrset: ../src/ptrset.o test_ptrset.o
 test_buf: ../src/buf.o test_buf.o
 	$(CC) $(CFLAGS) ../src/buf.o test_buf.o -o $@
 
+test:
+	./test_ptrset
+	./test_buf
+
 clean:
 	rm test_ptrset test_buf
