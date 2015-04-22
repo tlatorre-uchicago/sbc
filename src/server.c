@@ -26,8 +26,8 @@ void ctrlc_handler(int _) {
 }
 
 /* XL3's connect on port XL3_PORT + crate */
-#define XL3_PORT 45630
-#define XL3_ORCA_PORT 54630
+#define XL3_PORT 44601
+#define XL3_ORCA_PORT 54601
 #define XL3_REQUEST_TIMEOUT 1
 
 struct sock *find_xl3_socket(int id)
