@@ -20,6 +20,8 @@ void ptrset_free(struct ptrset *s)
 
 void ptrset_free_all(struct ptrset *s)
 {
+    /* free all the memory pointed to by the pointers
+     * in the set, and then free the pointer set */
     int i;
     for (i = 0; i < s->entries; i++) {
         free(s->values[i]);
@@ -41,6 +43,8 @@ int ptrset_add(struct ptrset *s, void *value)
 }
 
 void *ptrset_pop(struct ptrset *s) {
+    /* returns the last pointer added to the set, or NULL if the
+     * set is empty. */
     if (s->entries > 0) {
         return s->values[--s->entries];
     } else {

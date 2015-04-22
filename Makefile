@@ -1,4 +1,4 @@
-all: server
+all: server test_ptrset
 
 CC=cc
 CFLAGS=-O0 -g -Wall -DDEBUG
@@ -23,6 +23,9 @@ utils.o: utils.c
 
 server: utils.o server.c tpoll.o buf.o ptrset.o pack.o sock.o
 	$(CC) $(CFLAGS) server.c utils.o tpoll.o buf.o ptrset.o pack.o sock.o -o server -lrt
+
+test_ptrset: ptrset.o test_ptrset.o
+	$(CC) $(CFLAGS) ptrset.o test_ptrset.o -o $@
 
 pack.o: pack.c
 	$(CC) $(CFLAGS) -c pack.c
