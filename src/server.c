@@ -214,18 +214,17 @@ int main(void)
 
         clock_gettime(CLOCK_MONOTONIC, &time_now);
 
-        check_req_times(time_now);
+        int diff = time_now.tv_sec - time_last.tv_sec;
+        time_last = time_now;
+        t = time(NULL);
+        timeinfo = localtime(&t);
 
-        if (nfds == -1) {
-            perror("poll");
-            continue;
-        } 
-            
-        if (time_now.tv_sec > time_last.tv_sec + 10) {
-            time_last = time_now;
-            t = time(NULL);
-            timeinfo = localtime(&t);
+        if (diff > 1) {
+            check_req_times(time_now);
+        }
 
+        if (diff > 10) {
+            /* print out status */
             if (timeinfo == NULL) {
                 perror("localtime");
             } else if (strftime(timestr, sizeof(timestr),
@@ -237,6 +236,10 @@ int main(void)
             continue;
         }
 
+        if (nfds == -1) {
+            perror("poll");
+            continue;
+        } 
         /* poll() timeout */
         if (nfds == 0) continue;
 
