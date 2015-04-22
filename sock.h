@@ -4,6 +4,7 @@
 
 #include "buf.h"
 #include <sys/epoll.h>
+#include <time.h>
 #include "XL3PacketTypes.h"
 
 /* buffer size for the send/recv buffers */
@@ -30,7 +31,7 @@ typedef enum packet_type {
 struct XL3_request {
     XL3Packet packet;
     struct sock *sender;
-    /* time? */
+    struct timespec t;
 };
 
 struct sock {

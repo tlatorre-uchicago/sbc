@@ -28,6 +28,7 @@ void ctrlc_handler(int _) {
 /* XL3's connect on port XL3_PORT + crate */
 #define XL3_PORT 45630
 #define XL3_ORCA_PORT 54630
+#define XL3_REQUEST_TIMEOUT 1
 
 struct sock *find_xl3_socket(int id)
 {
@@ -40,13 +41,36 @@ struct sock *find_xl3_socket(int id)
     return NULL;
 }
 
+void check_req_times(struct timespec now)
+{
+    fprintf(stderr, "check_req_times()\n");
+    struct sock *s;
+    int i;
+    for (i = 0; i < sockset->entries; i++) {
+        s = (struct sock *)sockset->values[i];
+
+        if (s->type != XL3) continue;
+
+        if (s->req && (now.tv_sec > s->req->t.tv_sec + XL3_REQUEST_TIMEOUT)) {
+            fprintf(stderr, "WARNING: XL3 request timeout, "
+                            "sending new request!\n");
+            free(s->req);
+            /* pop the next request off the queue */
+            s->req = (struct XL3_request *)ptrset_pop(s->req_queue);
+            /* if there are no more requests, pop() returns NULL */
+            if (s->req) {
+                sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
+            }
+        }
+    }
+}
+
 void process_xl3_orca_socket(struct sock *s)
 {
     static char tmp[XL3_PACKET_SIZE];
 
     int n;
     while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
-        fprintf(stderr, "sending XL3 packet\n");
         n = buf_read(s->rbuf, tmp, XL3_PACKET_SIZE);
         if (n < 0) {
             fprintf(stderr, "ERROR: process_xl3_orca_socket(), failed to read "
@@ -57,6 +81,7 @@ void process_xl3_orca_socket(struct sock *s)
         struct XL3_request *r = malloc(sizeof (struct XL3_request));
         memcpy((char *)&r->packet, tmp, XL3_PACKET_SIZE);
         r->sender = s;
+        clock_gettime(CLOCK_MONOTONIC, &r->t);
 
         struct sock *xl3 = find_xl3_socket(s->id);
 
@@ -189,6 +214,8 @@ int main(void)
         nfds = epoll_wait(epollfd, events, MAX_EVENTS, 1000);
 
         clock_gettime(CLOCK_MONOTONIC, &time_now);
+
+        check_req_times(time_now);
 
         if (nfds == -1) {
             perror("poll");
