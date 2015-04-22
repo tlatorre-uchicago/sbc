@@ -2,10 +2,11 @@
  *
  */
 
-#include "buf.h"
 #include <sys/epoll.h>
 #include <time.h>
 #include <stdint.h>
+#include <arpa/inet.h>
+#include "buf.h"
 #include "XL3PacketTypes.h"
 
 /* buffer size for the send/recv buffers */
@@ -39,6 +40,7 @@ struct sock {
     int fd;
     sock_type_t type;
     int id;
+    char ip[INET6_ADDRSTRLEN];
     struct buffer *rbuf;
     struct buffer *sbuf;
     /* queue for commands -> XL3 */
@@ -52,7 +54,7 @@ struct ptrset *sockset;
 
 int global_setup();
 void global_free();
-struct sock *sock_init(int fd, sock_type_t type, int id);
+struct sock *sock_init(int fd, sock_type_t type, int id, char *ip);
 void sock_close(struct sock *s);
 int sock_listen(int port, int backlog, int type, int id);
 void sock_accept(struct sock *s);

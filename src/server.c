@@ -277,8 +277,6 @@ int main(void)
                         /* relay to all dispatchers */
                         relay_to_dispatchers(printbuf, strlen(printbuf), 0);
                         break;
-                    default:
-                        fprintf(stderr, "unknown socket\n");
                 } /* switch statement */
             } /* if events[i].events & POLLIN */
         } /* loop over nfds */

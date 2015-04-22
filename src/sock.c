@@ -31,12 +31,13 @@ void global_free()
     ptrset_free(sockset);
 }
 
-struct sock *sock_init(int fd, sock_type_t type, int id)
+struct sock *sock_init(int fd, sock_type_t type, int id, char *ip)
 {
     struct sock *s = malloc((sizeof (struct sock)));
     s->fd = fd;
     s->type = type;
     s->id = id;
+    strncpy(s->ip, ip, INET6_ADDRSTRLEN);
     s->rbuf = buf_init(BUFSIZE);
     s->sbuf = buf_init(BUFSIZE);
     s->req_queue = ptrset_init();
@@ -117,7 +118,7 @@ int sock_listen(int port, int backlog, int type, int id)
     set_nonblocking(sockfd);
 
     ev.events = EPOLLIN;
-    ev.data.ptr = sock_init(sockfd, type, id);
+    ev.data.ptr = sock_init(sockfd, type, id, "\0");
 
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
         perror("epoll_ctl");
@@ -151,13 +152,13 @@ void sock_accept(struct sock *s)
 
     struct sock *new_sock;
     if (s->type == CLIENT_LISTEN) {
-        new_sock = sock_init(new_fd, CLIENT, s->id);
+        new_sock = sock_init(new_fd, CLIENT, s->id, ip_addr);
     } else if (s->type == DISPATCH_LISTEN) {
-        new_sock = sock_init(new_fd, DISPATCH, s->id);
+        new_sock = sock_init(new_fd, DISPATCH, s->id, ip_addr);
     } else if (s->type == XL3_LISTEN) {
-        new_sock = sock_init(new_fd, XL3, s->id);
+        new_sock = sock_init(new_fd, XL3, s->id, ip_addr);
     } else if (s->type == XL3_ORCA_LISTEN) {
-        new_sock = sock_init(new_fd, XL3_ORCA, s->id);
+        new_sock = sock_init(new_fd, XL3_ORCA, s->id, ip_addr);
     } else {
         fprintf(stderr, "sock_accept: unknown socket type %x", s->type);
         return;
@@ -199,6 +200,7 @@ int sock_io(struct sock *s, uint32_t event)
         if (bytes == -1) {
             perror("recv");
         } else if (bytes == 0) {
+            fprintf(stderr, "server: %s disconnected.\n", s->ip);
             sock_close(s);
             return -1;
         } else {
