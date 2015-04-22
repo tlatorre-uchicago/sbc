@@ -34,4 +34,4 @@ pack.o: pack.c
 # 	$(CC) $(CFLAGS) pack.o -o pack
 
 clean:
-	rm *.o server pack
+	rm *.o server pack test_ptrset

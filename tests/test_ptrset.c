@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdlib.h>
-#include "ptrset.h"
+#include "../src/ptrset.h"
 
 int main()
 {
