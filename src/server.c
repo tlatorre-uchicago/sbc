@@ -26,7 +26,7 @@ void ctrlc_handler(int _) {
 /* XL3's connect on port XL3_PORT + crate */
 #define XL3_PORT 44601
 #define XL3_ORCA_PORT 54601
-#define XL3_REQUEST_TIMEOUT 1
+#define XL3_REQUEST_TIMEOUT 10
 
 struct sock *find_xl3_socket(int id)
 {
@@ -56,6 +56,7 @@ void check_req_times(struct timespec now)
             s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
             /* if there are no more requests, pop() returns NULL */
             if (s->req) {
+                clock_gettime(CLOCK_MONOTONIC, &s->req->t);
                 sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
             }
         }
@@ -78,7 +79,6 @@ void process_xl3_orca_socket(struct sock *s)
         struct XL3_request *r = malloc(sizeof (struct XL3_request));
         memcpy((char *)&r->packet, tmp, XL3_PACKET_SIZE);
         r->sender = s;
-        clock_gettime(CLOCK_MONOTONIC, &r->t);
 
         struct sock *xl3 = find_xl3_socket(s->id);
 
@@ -91,6 +91,7 @@ void process_xl3_orca_socket(struct sock *s)
             ptrset_add(xl3->req_queue, r);
         } else {
             xl3->req = r;
+            clock_gettime(CLOCK_MONOTONIC, &r->t);
             sock_write(xl3, (char *)&(r->packet), XL3_PACKET_SIZE);
         }
     }
@@ -147,6 +148,7 @@ void process_xl3_data(struct sock *s)
                 s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
                 /* if there are no more requests, pop() returns NULL */
                 if (s->req) {
+                    clock_gettime(CLOCK_MONOTONIC, &s->req->t);
                     sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
                 }
         } /* switch */
@@ -208,7 +210,7 @@ int main(void)
 
     while (go) {
         /* timeout after 1 second */
-        nfds = epoll_wait(epollfd, events, MAX_EVENTS, 1000);
+        nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
 
         clock_gettime(CLOCK_MONOTONIC, &time_now);
 
