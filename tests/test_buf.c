@@ -18,5 +18,6 @@ int main()
     char c[1001];
     assert(buf_write(buf, c, sizeof c) == -1);
     assert(BUF_LEN(buf) == 0);
+    buf_free(buf);
     return 0;
 }
