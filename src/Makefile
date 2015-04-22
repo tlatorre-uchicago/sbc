@@ -21,11 +21,8 @@ tpoll.o: tpoll.c
 utils.o: utils.c
 	$(CC) $(CFLAGS) -c utils.c
 
-server: utils.o server.c tpoll.o buf.o ptrset.o pack.o sock.o
-	$(CC) $(CFLAGS) server.c utils.o tpoll.o buf.o ptrset.o pack.o sock.o -o server -lrt
-
-pack.o: pack.c
-	$(CC) $(CFLAGS) -c pack.c
+server: utils.o server.c tpoll.o buf.o ptrset.o sock.o
+	$(CC) $(CFLAGS) server.c utils.o tpoll.o buf.o ptrset.o sock.o -o server -lrt
 
 clean:
 	rm *.o server

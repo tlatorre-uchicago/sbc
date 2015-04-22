@@ -261,14 +261,18 @@ void sock_free(struct sock *s)
     free(s);
 }
 
-void relay_to_dispatchers(char *msg, int size, int type)
+void relay_to_dispatchers(char *msg, uint16_t size, uint16_t type)
 {
     /* relay the message in `buf` to all dispatchers */
     static char buf[10000];
-    int header_size;
-    header_size = pack(buf, "hh", size, type);
-    memcpy(buf+header_size,msg,size);
-    size_t total = size + header_size;
+
+    size = htons(size);
+    type = htons(type);
+    buf[0] = (size >> 8) & 0xff;
+    buf[1] = size & 0xff;
+    buf[2] = (type >> 8) & 0xff;
+    buf[3] = type & 0xff;
+    memcpy(buf+4, msg, size);
 
     int i;
     for (i = 0; i < sockset->entries; i++) {
@@ -276,6 +280,6 @@ void relay_to_dispatchers(char *msg, int size, int type)
 
         if (s->type != DISPATCH) continue;
 
-        sock_write(s, buf, total);
+        sock_write(s, buf, size + 4);
     }
 }

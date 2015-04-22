@@ -5,6 +5,7 @@
 #include "buf.h"
 #include <sys/epoll.h>
 #include <time.h>
+#include <stdint.h>
 #include "XL3PacketTypes.h"
 
 /* buffer size for the send/recv buffers */
@@ -58,4 +59,4 @@ void sock_accept(struct sock *s);
 int sock_io(struct sock *s, uint32_t event);
 void sock_write(struct sock *s, char *buf, int size);
 void sock_free(struct sock *s);
-void relay_to_dispatchers(char *msg, int size, int type);
+void relay_to_dispatchers(char *msg, uint16_t size, uint16_t type);
