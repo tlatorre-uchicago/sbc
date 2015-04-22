@@ -43,7 +43,6 @@ struct sock *find_xl3_socket(int id)
 
 void check_req_times(struct timespec now)
 {
-    fprintf(stderr, "check_req_times()\n");
     struct sock *s;
     int i;
     for (i = 0; i < sockset->entries; i++) {
@@ -70,7 +69,7 @@ void process_xl3_orca_socket(struct sock *s)
     static char tmp[XL3_PACKET_SIZE];
 
     int n;
-    while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
+    while (BUF_LEN(s->rbuf) >= XL3_PACKET_SIZE) {
         n = buf_read(s->rbuf, tmp, XL3_PACKET_SIZE);
         if (n < 0) {
             fprintf(stderr, "ERROR: process_xl3_orca_socket(), failed to read "
