@@ -24,7 +24,7 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
     if (op == EPOLL_CTL_MOD) flags = EV_ADD;
     if (op == EPOLL_CTL_DEL) flags = EV_DELETE;
 
-    EV_SET(&evSet, fd, filter, flags, 0, 0, (void *)event->data);
+    EV_SET(&evSet, fd, filter, flags, 0, 0, (void *)event->data->ptr);
     return kevent(epfd, &evSet, 1, NULL, 0, NULL);
 }
 
@@ -45,7 +45,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 
     nev = kevent(epfd, NULL, 0, evList, maxevents, &_timeout);
 
-    for (i = 0; i < nev, i++) {
+    for (i = 0; i < nev; i++) {
         events[i].events = 0;
         if (evList[i].flags & EVFILT_READ)  events[i].events |= EPOLLIN;
         if (evList[i].flags & EVFILT_WRITE) events[i].events |= EPOLLOUT;
@@ -53,7 +53,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
         /* EPOLLHUP seems like the closest thing to EV_EOF */
         if (evList[i].flags & EV_EOF)       events[i].events |= EPOLLHUP;
 
-        events[i].data = evList[i].udata;
+        events[i].data.ptr = (void *)evList[i].udata;
     }
 
     return nev;
