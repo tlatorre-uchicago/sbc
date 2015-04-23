@@ -24,7 +24,7 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
     if (op == EPOLL_CTL_MOD) flags = EV_ADD;
     if (op == EPOLL_CTL_DEL) flags = EV_DELETE;
 
-    EV_SET(&evSet, fd, filter, flags, 0, 0, (void *)event->data->ptr);
+    EV_SET(&evSet, fd, filter, flags, 0, 0, (void *)event->data.ptr);
     return kevent(epfd, &evSet, 1, NULL, 0, NULL);
 }
 
