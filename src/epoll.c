@@ -1,3 +1,4 @@
+#ifdef __MACH__
 #include "epoll.h"
 #include <sys/event.h>
 #include <time.h>
@@ -69,3 +70,4 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 
     return nev;
 }
+#endif

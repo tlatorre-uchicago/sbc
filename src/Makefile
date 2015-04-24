@@ -2,6 +2,12 @@ all: server
 
 CC=cc
 CFLAGS=-O0 -g -Wall -DDEBUG
+LDLIBS=
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S), Linux)
+	LDLIBS += -lrt
+endif
 
 sock.o: sock.c
 	$(CC) $(CFLAGS) -c sock.c
@@ -15,8 +21,8 @@ ptrset.o: ptrset.c
 utils.o: utils.c
 	$(CC) $(CFLAGS) -c utils.c
 
-server: utils.o server.c buf.o ptrset.o sock.o
-	$(CC) $(CFLAGS) server.c utils.o buf.o ptrset.o sock.o -o server -lrt
+server: utils.o server.c buf.o ptrset.o sock.o epoll.o
+	$(CC) $(CFLAGS) server.c utils.o buf.o ptrset.o sock.o epoll.o -o server $(LDLIBS)
 
 clean:
 	rm *.o server

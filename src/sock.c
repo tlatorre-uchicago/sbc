@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <sys/epoll.h>
 #include <errno.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -11,6 +10,12 @@
 #include "sock.h"
 #include "ptrset.h"
 #include "utils.h"
+
+#ifdef __MACH__
+#include "epoll.h"
+#else
+#include <sys/epoll.h>
+#endif
 
 #define READSIZE 1000
 

@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/epoll.h>
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+#ifdef __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
 #include <unistd.h>
 #include <signal.h>
 #include <sys/ioctl.h>
@@ -17,6 +20,12 @@
 #include "XL3PacketTypes.h"
 #include "sock.h"
 
+#ifdef __MACH__
+#include "epoll.h"
+#else
+#include <sys/epoll.h>
+#endif
+
 static volatile int go = 1;
 
 void ctrlc_handler(int _) {
@@ -27,6 +36,27 @@ void ctrlc_handler(int _) {
 #define XL3_PORT 44601
 #define XL3_ORCA_PORT 54601
 #define XL3_REQUEST_TIMEOUT 10
+
+void get_monotonic_time(struct timespec *ts)
+{
+    /* Returns the time from a monotonic clock. Used for scheduling tasks. */
+#ifdef __MACH__
+    /* OSX does not have clock_gettime.
+     * from stackoverflow.com/q/5167269 */
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    /* SYSTEM_CLOCK is advertised as being monotonic
+     * see
+     * opensource.apple.com/source/xnu/xnu-2422.1.72/osfmk/mach/clock_types.h */
+    host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    ts->tv_sec = mts.tv_sec;
+    ts->tv_nsec = mts.tv_nsec;
+#else
+    clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+}
 
 struct sock *find_xl3_socket(int id)
 {
@@ -56,7 +86,7 @@ void check_req_times(struct timespec now)
             s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
             /* if there are no more requests, pop() returns NULL */
             if (s->req) {
-                clock_gettime(CLOCK_MONOTONIC, &s->req->t);
+                get_monotonic_time(&s->req->t);
                 sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
             }
         }
@@ -91,7 +121,7 @@ void process_xl3_orca_socket(struct sock *s)
             ptrset_add(xl3->req_queue, r);
         } else {
             xl3->req = r;
-            clock_gettime(CLOCK_MONOTONIC, &r->t);
+            get_monotonic_time(&r->t);
             sock_write(xl3, (char *)&(r->packet), XL3_PACKET_SIZE);
         }
     }
@@ -148,7 +178,7 @@ void process_xl3_data(struct sock *s)
                 s->req = (struct XL3_request *)ptrset_popleft(s->req_queue);
                 /* if there are no more requests, pop() returns NULL */
                 if (s->req) {
-                    clock_gettime(CLOCK_MONOTONIC, &s->req->t);
+                    get_monotonic_time(&s->req->t);
                     sock_write(s, (char *)&(s->req->packet), XL3_PACKET_SIZE);
                 }
         } /* switch */
@@ -178,7 +208,7 @@ int main(void)
 
     int i, n;
 
-    clock_gettime(CLOCK_MONOTONIC, &time_now);
+    get_monotonic_time(&time_now);
     time_last_info = time_last_check = time_now;
 
     if (global_setup() == -1) {
@@ -212,7 +242,7 @@ int main(void)
         /* timeout after 1 second */
         nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
 
-        clock_gettime(CLOCK_MONOTONIC, &time_now);
+        get_monotonic_time(&time_now);
 
         if (time_now.tv_sec - time_last_check.tv_sec > 1) {
             time_last_check = time_now;
