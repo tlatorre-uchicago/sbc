@@ -4,6 +4,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #define MAX_EVENTS 100
 
@@ -17,10 +18,10 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
     static struct kevent evSet;
     static int rv;
 
-    if (op == EPOL_CTL_ADD || op == EPOLL_CTL_MOD) {
+    if (op == EPOLL_CTL_ADD || op == EPOLL_CTL_MOD) {
         if (event->events & EPOLLIN) {
             EV_SET(&evSet, fd, EVFILT_READ, EV_ADD, 0, 0, event->data.ptr);
-            if ((rv = kevent(epfd, &evSest, 1, NULL, 0, NULL))) return rv;
+            if ((rv = kevent(epfd, &evSet, 1, NULL, 0, NULL))) return rv;
             }
         if (event->events & EPOLLOUT) {
             EV_SET(&evSet, fd, EVFILT_WRITE, EV_ADD, 0, 0, event->data.ptr);

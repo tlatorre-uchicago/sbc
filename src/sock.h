@@ -2,12 +2,17 @@
  *
  */
 
-#include <sys/epoll.h>
 #include <time.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include "buf.h"
 #include "XL3PacketTypes.h"
+
+#ifdef __MACH__
+#include "epoll.h"
+#else
+#include <sys/epoll.h>
+#endif
 
 /* buffer size for the send/recv buffers */
 #define BUFSIZE 1000000
