@@ -53,6 +53,20 @@ struct sock *sock_init(int fd, sock_type_t type, int id, char *ip)
 
 void sock_close(struct sock *s)
 {
+    int i, j;
+    for (i = 0; i < sockset->entries; i++) {
+        struct sock *xl3 = (struct sock *)sockset->values[i];
+        if (xl3->req && xl3->req->sender == s) {
+            xl3->req->sender = NULL;
+        }
+        for (j = 0; j < xl3->req_queue->entries; j++) {
+            struct XL3_request *req = \
+                (struct XL3_request *)xl3->req_queue->values[j];
+            if (req->sender == s) {
+                req->sender = NULL;
+            }
+        }
+    }
     /* close the file descriptor */
     close(s->fd);
     /* delete the socket from epoll */

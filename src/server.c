@@ -171,7 +171,12 @@ void process_xl3_data(struct sock *s)
                                     "but header doesn't match request.\n");
                     continue;
                 }
-                sock_write(s->req->sender, tmp, XL3_PACKET_SIZE);
+                if (s->req->sender) {
+                    sock_write(s->req->sender, tmp, XL3_PACKET_SIZE);
+                } else {
+                    fprintf(stderr, "WARNING: reply from XL3, but sender "
+                                    "disconnected.\n");
+                }
                 /* free the current request */
                 free(s->req);
                 /* pop the next request off the queue */
