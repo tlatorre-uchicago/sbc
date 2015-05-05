@@ -11,7 +11,7 @@ test_buf: ../src/buf.o test_buf.o
 	$(CC) $(CFLAGS) ../src/buf.o test_buf.o -o $@
 
 test_xl3: test_xl3.o
-	$(CC) $(CFLAGS) test_xl3.o -o $@
+	$(CC) $(CFLAGS) test_xl3.o -o $@ -lm -lrt
 
 test: test_ptrset test_buf
 	$(TEST) ./test_ptrset
