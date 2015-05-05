@@ -79,7 +79,9 @@ int main(int argc, char *argv[])
     freeaddrinfo(servinfo);
 
     packet->header.packetType = MESSAGE_ID;
-    sprintf(packet->payload, "test");
+    sprintf(packet->payload, "XL3 message: XL3 - crate 12\n"
+        "Code v4.02 using scatter gather dma, "
+        "last git: b23c2ae20bdba68f1c6b1cbedac8b53a696b8551\n");
     sendall(sockfd, buf, XL3_PACKET_SIZE);
 
     for (;;) {
