@@ -134,7 +134,7 @@ void process_xl3_data(struct sock *s)
 
     /* process all of the data in the read buffer */
     int n;
-    while (BUF_LEN(s->rbuf) > XL3_PACKET_SIZE) {
+    while (BUF_LEN(s->rbuf) >= XL3_PACKET_SIZE) {
         n = buf_read(s->rbuf,tmp,XL3_PACKET_SIZE);
         if (n < 0) {
             fprintf(stderr, "buf_read failed\n");
