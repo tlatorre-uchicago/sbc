@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <assert.h>
 #include "sock.h"
 #include "ptrset.h"
 #include "utils.h"
@@ -286,8 +287,8 @@ void relay_to_dispatchers(char *msg, uint16_t size, uint16_t type)
     /* relay the message in `buf` to all dispatchers */
     static char buf[10000];
 
-    size = htons(size);
-    type = htons(type);
+    assert(size < 10000);
+
     buf[0] = (size >> 8) & 0xff;
     buf[1] = size & 0xff;
     buf[2] = (type >> 8) & 0xff;
