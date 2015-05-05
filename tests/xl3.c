@@ -15,7 +15,7 @@
 #include <mach/mach.h>
 #endif
 
-#define RATE 1000
+#define RATE 10000
 #define N 1000
 #define XL3_PORT 44601
 

@@ -220,7 +220,7 @@ int sock_io(struct sock *s, uint32_t event)
         if (bytes == -1) {
             perror("recv");
         } else if (bytes == 0) {
-            fprintf(stderr, "server: %s disconnected.\n", s->ip);
+            printf("server: %s disconnected.\n", s->ip);
             sock_close(s);
             return -1;
         } else {

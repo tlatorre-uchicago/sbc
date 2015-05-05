@@ -19,4 +19,4 @@ test: test_ptrset test_buf xl3
 	./test_xl3
 
 clean:
-	rm test_ptrset test_buf test_xl3 *.o
+	rm test_ptrset test_buf *.o
