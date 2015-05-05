@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import struct
 import sys
 from collections import defaultdict

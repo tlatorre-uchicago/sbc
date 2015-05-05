@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+valgrind --leak-check=yes -q ../src/server > /dev/null & 
+server_pid=$!
+sleep 2
+nc -d localhost 3491 > out.bin &
+ncpid=$!
+for i in `seq 0 19`; do
+    ./xl3 $i &
+done
+
+sleep 2
+./check_bundles.py out.bin
+kill $server_pid
+kill $ncpid

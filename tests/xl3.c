@@ -134,9 +134,9 @@ int main(int argc, char *argv[])
     for (i = 0; i < N; i++) {
         usleep(randexp()*1e6/RATE);
         packet->header.packetType = MEGA_BUNDLE_ID;
-        packet->header.packetNum = i;
+        packet->header.packetNum = htons(i);
         packet->header.numBundles = 1; // ?
-        memset(packet->payload, 0, sizeof packet->payload);
+        memset(packet->payload, crate, sizeof packet->payload);
         sendall(sockfd, buf, XL3_PACKET_SIZE);
 
         get_monotonic_time(&now);
